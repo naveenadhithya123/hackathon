@@ -448,6 +448,31 @@ export async function sendMessage(req, res) {
       return res.status(403).json({ error: "You do not have access to this chat." });
     }
 
+    if (userId && !existingChat) {
+      await createChat({
+        id: activeChatId,
+        user_id: userId,
+        title: extractTitleFromPrompt(message || attachments?.[0]?.name || "New chat"),
+      });
+    }
+
+    if (userId && (message || documentIds.length || imageUrl)) {
+      await saveMessage({
+        chat_id: activeChatId,
+        role: "user",
+        content: message || "",
+        metadata: {
+          imageUrl: imageUrl ?? null,
+          imageContext: imageContext || null,
+          documentIds,
+          attachments,
+          mode,
+          authorId: userId,
+          authorEmail: userEmail || null,
+        },
+      });
+    }
+
     let contextChunks = [];
     let retrievedContext = "";
     const resolvedConversation = await resolveConversationMessage({
@@ -674,31 +699,6 @@ If the user asks for one word or one short sentence only, output exactly that co
       answer = await chatCompletion({
         messages,
         maxTokens: shouldPrioritizeLongCode ? 2600 : 1200,
-      });
-    }
-
-    if (userId && !existingChat) {
-      await createChat({
-        id: activeChatId,
-        user_id: userId,
-        title: extractTitleFromPrompt(message || attachments?.[0]?.name || "New chat"),
-      });
-    }
-
-    if (userId && (message || documentIds.length || imageUrl)) {
-      await saveMessage({
-        chat_id: activeChatId,
-        role: "user",
-        content: message || "",
-        metadata: {
-          imageUrl: imageUrl ?? null,
-          imageContext: imageContext || null,
-          documentIds,
-          attachments,
-          mode,
-          authorId: userId,
-          authorEmail: userEmail || null,
-        },
       });
     }
 

@@ -465,8 +465,11 @@ export default function App() {
   const fileInputRef = useRef(null);
   const userMenuRef = useRef(null);
   const sharedChannelRef = useRef(null);
+  const localSharedChannelRef = useRef(null);
   const typingResetRef = useRef(null);
   const typingUserTimeoutsRef = useRef(new Map());
+  const refreshCurrentChatRef = useRef(null);
+  const sharedEventIdsRef = useRef(new Set());
   const clientSessionIdRef = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -653,6 +656,31 @@ export default function App() {
   const latestAnswer = latestConversationContext.answer || lastAssistantAnswer;
   const sharedRoomToken = currentChat?.shareToken || activeShareToken;
 
+  useEffect(() => {
+    refreshCurrentChatRef.current = refreshCurrentChat;
+  }, [refreshCurrentChat]);
+
+  function rememberSharedEvent(eventId) {
+    if (!eventId) {
+      return false;
+    }
+
+    if (sharedEventIdsRef.current.has(eventId)) {
+      return true;
+    }
+
+    sharedEventIdsRef.current.add(eventId);
+
+    if (sharedEventIdsRef.current.size > 250) {
+      const oldestEventId = sharedEventIdsRef.current.values().next().value;
+      if (oldestEventId) {
+        sharedEventIdsRef.current.delete(oldestEventId);
+      }
+    }
+
+    return false;
+  }
+
   function clearRemoteTypingUser(targetUserId) {
     const timeoutId = typingUserTimeoutsRef.current.get(targetUserId);
 
@@ -690,7 +718,35 @@ export default function App() {
   }
 
   async function syncSharedPresence(typing = false) {
-    if (!sharedChannelRef.current || !userId || !currentChatId) {
+    if (!userId || !currentChatId) {
+      return;
+    }
+
+    const payload = {
+      eventId:
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `typing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      chatId: currentChatId,
+      userId,
+      clientSessionId: clientSessionIdRef.current,
+      userEmail: userEmail || "",
+      typing,
+      sentAt: Date.now(),
+    };
+
+    if (localSharedChannelRef.current) {
+      try {
+        localSharedChannelRef.current.postMessage({
+          event: "typing-updated",
+          payload,
+        });
+      } catch (_error) {
+        // Ignore local channel errors.
+      }
+    }
+
+    if (!sharedChannelRef.current) {
       return;
     }
 
@@ -698,38 +754,111 @@ export default function App() {
       await sharedChannelRef.current.send({
         type: "broadcast",
         event: "typing-updated",
-        payload: {
-          chatId: currentChatId,
-          userId,
-          clientSessionId: clientSessionIdRef.current,
-          userEmail: userEmail || "",
-          typing,
-          sentAt: Date.now(),
-        },
+        payload,
       });
     } catch (_error) {
       // Ignore transient presence errors.
     }
   }
 
-  async function broadcastSharedChatRefresh() {
-    if (!sharedChannelRef.current || !currentChatId || !userId) {
+  async function broadcastSharedEvent(event, payload) {
+    if (!currentChatId || !userId || !event) {
+      return;
+    }
+
+    const nextPayload = {
+      ...payload,
+      eventId:
+        payload?.eventId ||
+        (typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${event}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+      chatId: payload?.chatId || currentChatId,
+      userId: payload?.userId || userId,
+      clientSessionId: clientSessionIdRef.current,
+      sentAt: payload?.sentAt || Date.now(),
+    };
+
+    try {
+      localSharedChannelRef.current?.postMessage({ event, payload: nextPayload });
+    } catch (_error) {
+      // Ignore local channel errors.
+    }
+
+    try {
+      window.localStorage.setItem(
+        "__smartgpt_shared_event__",
+        JSON.stringify({ event, payload: nextPayload }),
+      );
+    } catch (_error) {
+      // Ignore storage write errors.
+    }
+
+    if (!sharedChannelRef.current) {
       return;
     }
 
     try {
       await sharedChannelRef.current.send({
         type: "broadcast",
-        event: "messages-updated",
-        payload: {
-          chatId: currentChatId,
-          userId,
-          clientSessionId: clientSessionIdRef.current,
-          sentAt: Date.now(),
-        },
+        event,
+        payload: nextPayload,
       });
     } catch (_error) {
       // Ignore transient realtime errors.
+    }
+  }
+
+  async function broadcastSharedChatRefresh() {
+    if (!currentChatId || !userId) {
+      return;
+    }
+
+    await broadcastSharedEvent("messages-updated", {});
+  }
+
+  function handleIncomingSharedEvent(eventName, payload, shareTokenOverride = sharedRoomToken) {
+    if (!payload || payload?.clientSessionId === clientSessionIdRef.current) {
+      return;
+    }
+
+    if (rememberSharedEvent(payload.eventId)) {
+      return;
+    }
+
+    if (eventName === "typing-updated") {
+      if (payload?.typing) {
+        markRemoteTypingUser(payload.userId, payload.userEmail || "Someone");
+        return;
+      }
+
+      clearRemoteTypingUser(payload?.userId);
+      return;
+    }
+
+    if (eventName === "message-created") {
+      appendLocalMessage({
+        id: payload.messageId || payload.eventId || `shared-${Date.now()}`,
+        role: "user",
+        content: payload.content || "",
+        attachments: payload.attachments || [],
+        fileUrl: payload.fileUrl || "",
+        fileName: payload.fileName || "",
+        imageUrl: payload.imageUrl || "",
+        authorLabel: payload.userEmail || "",
+        messageType: payload.messageType || "chat",
+        status: "done",
+        animate: false,
+      });
+
+      window.setTimeout(() => {
+        refreshCurrentChatRef.current?.(shareTokenOverride || "");
+      }, 700);
+      return;
+    }
+
+    if (eventName === "messages-updated") {
+      refreshCurrentChatRef.current?.(shareTokenOverride || "");
     }
   }
 
@@ -745,6 +874,7 @@ export default function App() {
     setMobileSidebarOpen(false);
     setActiveShareToken("");
     setLiveTypingUsers([]);
+    sharedEventIdsRef.current.clear();
     for (const timeoutId of typingUserTimeoutsRef.current.values()) {
       window.clearTimeout(timeoutId);
     }
@@ -1241,6 +1371,19 @@ export default function App() {
     };
 
     try {
+      if (sharedRoomToken && currentChatId) {
+        await broadcastSharedEvent("message-created", {
+          messageId: `shared-user-${clientSessionIdRef.current}-${Date.now()}`,
+          content: trimmed,
+          userEmail: userEmail || "",
+          attachments: createAttachmentPayload(readyAttachments),
+          imageUrl: readyImage?.imageUrl || "",
+          fileUrl: readyAttachments.find((item) => item.type === "document")?.fileUrl || "",
+          fileName: readyAttachments.find((item) => item.type === "document")?.name || "",
+          messageType: asksImage ? "image_generation" : "chat",
+        });
+      }
+
       await sendMessage({
         content: trimmed,
         documentIds,
@@ -1358,24 +1501,27 @@ export default function App() {
     sharedChannelRef.current = channel;
 
     channel.on("broadcast", { event: "messages-updated" }, async ({ payload }) => {
-      if (!isActive || payload?.clientSessionId === clientSessionIdRef.current) {
+      if (!isActive) {
         return;
       }
 
-      await refreshCurrentChat(sharedRoomToken);
+      handleIncomingSharedEvent("messages-updated", payload, sharedRoomToken);
     });
 
     channel.on("broadcast", { event: "typing-updated" }, ({ payload }) => {
-      if (!isActive || payload?.clientSessionId === clientSessionIdRef.current) {
+      if (!isActive) {
         return;
       }
 
-      if (payload?.typing) {
-        markRemoteTypingUser(payload.userId, payload.userEmail || "Someone");
+      handleIncomingSharedEvent("typing-updated", payload, sharedRoomToken);
+    });
+
+    channel.on("broadcast", { event: "message-created" }, ({ payload }) => {
+      if (!isActive) {
         return;
       }
 
-      clearRemoteTypingUser(payload?.userId);
+      handleIncomingSharedEvent("message-created", payload, sharedRoomToken);
     });
 
     channel.subscribe(async (status) => {
@@ -1397,10 +1543,72 @@ export default function App() {
       sharedChannelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [currentChatId, sharedRoomToken, userId, userEmail, refreshCurrentChat]);
+  }, [currentChatId, sharedRoomToken, userId, userEmail]);
 
   useEffect(() => {
-    if (!sharedRoomToken || !sharedChannelRef.current || !userId) {
+    if (!sharedRoomToken || !currentChatId) {
+      return undefined;
+    }
+
+    if (typeof BroadcastChannel === "undefined") {
+      return undefined;
+    }
+
+    const channel = new BroadcastChannel(`shared-chat:${currentChatId}`);
+    localSharedChannelRef.current = channel;
+
+    channel.onmessage = async (event) => {
+      handleIncomingSharedEvent(event?.data?.event, event?.data?.payload, sharedRoomToken);
+    };
+
+    return () => {
+      localSharedChannelRef.current = null;
+      channel.close();
+    };
+  }, [currentChatId, sharedRoomToken]);
+
+  useEffect(() => {
+    if (!sharedRoomToken || !currentChatId) {
+      return undefined;
+    }
+
+    const handleStorage = (event) => {
+      if (event.key !== "__smartgpt_shared_event__" || !event.newValue) {
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(event.newValue);
+        if (parsed?.payload?.chatId !== currentChatId) {
+          return;
+        }
+
+        handleIncomingSharedEvent(parsed.event, parsed.payload, sharedRoomToken);
+      } catch (_error) {
+        // Ignore malformed storage payloads.
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [currentChatId, sharedRoomToken]);
+
+  useEffect(() => {
+    if (!sharedRoomToken || !currentChatId || !userId) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      refreshCurrentChatRef.current?.(sharedRoomToken);
+    }, 1200);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [currentChatId, sharedRoomToken, userId]);
+
+  useEffect(() => {
+    if (!sharedRoomToken || !userId) {
       return undefined;
     }
 

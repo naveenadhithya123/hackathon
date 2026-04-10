@@ -829,6 +829,8 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
 .conversation-scroll {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 8px 24px 0;
   min-height: 0;
   scroll-padding-bottom: 220px;
@@ -1392,7 +1394,8 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     min-height: var(--app-height);
   }
   body {
-    overflow: hidden;
+    overflow-x: hidden;
+    overscroll-behavior-y: auto;
   }
   .chatgpt-shell { grid-template-columns: 1fr; }
   .chatgpt-shell,
@@ -1460,6 +1463,8 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 8px 10px 0;
     scroll-padding-bottom: 182px;
   }
