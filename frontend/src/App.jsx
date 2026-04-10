@@ -701,7 +701,7 @@ export default function App() {
         return;
       }
 
-      await startRecording(false);
+      await startRecording();
     } catch (error) {
       setIsProcessingAction(false);
       appendAssistantMessage({

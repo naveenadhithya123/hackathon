@@ -1390,7 +1390,7 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     min-width: 0;
   }
   .topbar h1 { font-size: 1.08rem; }
-  .topbar p { font-size: 0.8rem; }
+  .topbar p { display: none; }
   .topbar-actions {
     width: auto;
     flex: 0 0 auto;
@@ -1401,14 +1401,14 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     padding: 8px 12px;
   }
   .user-badge {
-    max-width: min(42vw, 220px);
+    max-width: min(30vw, 132px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .composer-shell {
     width: calc(100% - 20px);
-    margin: 0 auto calc(20px + env(safe-area-inset-bottom, 0px));
+    margin: 0 auto calc(8px + env(safe-area-inset-bottom, 0px));
     padding-top: 12px;
     padding-bottom: 0;
   }
@@ -1550,9 +1550,7 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .topbar-brand-copy p {
-    display: none;
+    white-space: nowrap;
   }
   .topbar-actions {
     width: auto;
@@ -1560,9 +1558,9 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     align-self: start;
   }
   .user-badge {
-    max-width: min(36vw, 160px);
+    max-width: min(28vw, 124px);
     font-size: 0.84rem;
-    padding: 7px 12px;
+    padding: 7px 10px;
   }
   .user-menu-panel {
     right: 0;

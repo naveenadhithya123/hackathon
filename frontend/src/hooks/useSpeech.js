@@ -54,6 +54,10 @@ export function useSpeech() {
       return streamRef.current;
     }
 
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Microphone access is not supported in this browser.");
+    }
+
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -73,19 +77,25 @@ export function useSpeech() {
       return;
     }
 
-    const audioContext = new AudioContextCtor();
-    if (audioContext.state === "suspended") {
-      await audioContext.resume().catch(() => {});
+    try {
+      const audioContext = new AudioContextCtor();
+      if (audioContext.state === "suspended") {
+        await audioContext.resume().catch(() => {});
+      }
+
+      const source = audioContext.createMediaStreamSource(activeStream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      monitorAudioLevel();
+    } catch {
+      audioContextRef.current = null;
+      analyserRef.current = null;
+      setAudioLevel(0);
     }
-
-    const source = audioContext.createMediaStreamSource(activeStream);
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-
-    audioContextRef.current = audioContext;
-    analyserRef.current = analyser;
-    monitorAudioLevel();
   }
 
   function stopAudioMeter() {
@@ -168,7 +178,7 @@ export function useSpeech() {
     };
 
     recorderRef.current = recorder;
-    recorder.start(250);
+    recorder.start();
     recordingModeRef.current = "recorder";
     setIsRecording(true);
   }
@@ -183,8 +193,17 @@ export function useSpeech() {
       /android|iphone|ipad|ipod/i.test(navigator.userAgent) || !SpeechRecognition;
 
     if (prefersRecorderFallback) {
-      await startRecorderRecording();
-      return;
+      try {
+        await startRecorderRecording();
+        return;
+      } catch (recorderError) {
+        if (SpeechRecognition) {
+          await startRecognitionRecording(SpeechRecognition);
+          return;
+        }
+
+        throw recorderError;
+      }
     }
 
     await startRecognitionRecording(SpeechRecognition);
