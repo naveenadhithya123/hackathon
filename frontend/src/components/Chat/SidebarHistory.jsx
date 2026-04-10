@@ -19,6 +19,9 @@ export default function SidebarHistory({
               <strong>{chat.title}</strong>
               <span className="history-item-badge">{chat.messages?.length || 0}</span>
             </div>
+            {chat.isSharedAccess ? (
+              <span className="history-item-shared">Shared with you</span>
+            ) : null}
             <span>{new Date(chat.updated_at || Date.now()).toLocaleString([], {
               month: "short",
               day: "numeric",

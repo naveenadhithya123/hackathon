@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble.jsx";
+import TypingIndicator from "./TypingIndicator.jsx";
 
 const SUGGESTIONS = [
   { emoji: "\u{1F4D8}", text: "Topic explanations, summaries, and structured exam support" },
@@ -10,7 +11,13 @@ const SUGGESTIONS = [
   { emoji: "\u2709\uFE0F", text: "Direct email delivery with polished PDF or Word attachments" },
 ];
 
-export default function ChatWindow({ messages, onSpeakMessage, isSpeaking, speakingText }) {
+export default function ChatWindow({
+  messages,
+  onSpeakMessage,
+  isSpeaking,
+  speakingText,
+  liveTypingUsers = [],
+}) {
   const showWelcome = messages.length <= 1 && messages[0]?.id === "welcome-message";
   const scrollRef = useRef(null);
   const endRef = useRef(null);
@@ -59,15 +66,26 @@ export default function ChatWindow({ messages, onSpeakMessage, isSpeaking, speak
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              onSpeakMessage={onSpeakMessage}
-              isSpeaking={isSpeaking}
-              speakingText={speakingText}
-            />
-          ))
+          <>
+            {messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                onSpeakMessage={onSpeakMessage}
+                isSpeaking={isSpeaking}
+                speakingText={speakingText}
+              />
+            ))}
+            {liveTypingUsers.length ? (
+              <TypingIndicator
+                label={
+                  liveTypingUsers.length === 1
+                    ? `${liveTypingUsers[0]} is typing...`
+                    : `${liveTypingUsers.length} people are typing...`
+                }
+              />
+            ) : null}
+          </>
         )}
         <div ref={endRef} aria-hidden="true" />
       </div>

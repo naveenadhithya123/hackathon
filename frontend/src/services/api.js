@@ -42,6 +42,18 @@ export function getHistory(userId) {
   return request(`/chat/${userId}/history`);
 }
 
+export function createChatShareLink(chatId, userId) {
+  return request(`/chat/${chatId}/share`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+}
+
+export function getSharedChat(shareToken, userId) {
+  const params = new URLSearchParams({ userId });
+  return request(`/chat/shared/${shareToken}?${params.toString()}`);
+}
+
 export function buildDocumentDownloadUrl(fileUrl, filename = "download") {
   const params = new URLSearchParams({
     url: fileUrl || "",

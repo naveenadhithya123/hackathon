@@ -644,6 +644,20 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   font-size: 0.75rem;
 }
 
+.history-item-shared {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(98, 200, 255, 0.12);
+  color: var(--accent-2) !important;
+  -webkit-text-fill-color: var(--accent-2);
+  font-size: 0.7rem !important;
+  font-weight: 600;
+}
+
 .history-item::after {
   content: "";
   position: absolute;
@@ -864,6 +878,14 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   white-space: pre-wrap;
   line-height: 1.8;
   font-size: 1rem;
+}
+
+.message-author {
+  margin-bottom: 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(238, 244, 255, 0.78);
 }
 
 .typing-cursor {
@@ -1138,6 +1160,12 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   margin: 0 auto;
   padding: 0 24px 4px;
   width: 100%;
+}
+
+.typing-label {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .typing {

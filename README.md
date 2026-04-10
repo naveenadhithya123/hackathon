@@ -89,7 +89,7 @@ npm run dev
 
 1. Go to your Supabase project → SQL Editor
 2. Run the entire contents of `supabase/schema.sql`
-3. This creates: `profiles`, `chats`, `messages`, `documents`, `document_chunks`, `quizzes` tables + vector search function
+3. This creates: `profiles`, `chats`, `chat_shares`, `chat_members`, `messages`, `documents`, `document_chunks`, `quizzes` tables + vector search function
 
 ---
 
@@ -128,6 +128,7 @@ VITE_ENABLE_AUTH=true
 | **Image generation** | Say "generate an image of..." or switch to Images folder |
 | **Email answer** | Type `/email you@example.com` or "send this to email@x.com" |
 | **Chat history** | All chats saved to Supabase, visible in left sidebar |
+| **Shared chats** | Use `Share chat` to generate a sign-in link for the same conversation |
 
 ---
 

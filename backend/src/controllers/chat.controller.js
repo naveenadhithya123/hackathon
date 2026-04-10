@@ -15,8 +15,11 @@ import {
 import { uploadBuffer } from "../services/cloudinary.service.js";
 import { buildGeneratedDocument, hasLiteralContentRequest } from "../utils/documentGenerator.js";
 import {
+  createOrGetChatShare,
   createChat,
+  getChatByIdForUser,
   getDocumentsByIds,
+  getSharedChatByToken,
   listDocumentChunks,
   listChatsByUser,
   saveMessage,
@@ -406,6 +409,8 @@ The file is already uploaded in this chat. Use the uploaded document directly an
 }
 
 export async function sendMessage(req, res) {
+  let activeChatId = req.body.chatId ?? uuid();
+  let fallbackUserId = "";
   let fallbackRequestMessage = "";
   let fallbackMode = "study";
   let fallbackUserEmail = "";
@@ -433,7 +438,16 @@ export async function sendMessage(req, res) {
       return res.status(400).json({ error: "message, imageUrl, or documentIds is required." });
     }
 
-    const activeChatId = chatId ?? uuid();
+    activeChatId = chatId ?? uuid();
+    fallbackUserId = userId || "";
+    const existingChat = chatId && userId
+      ? await getChatByIdForUser(chatId, userId)
+      : null;
+
+    if (chatId && userId && !existingChat) {
+      return res.status(403).json({ error: "You do not have access to this chat." });
+    }
+
     let contextChunks = [];
     let retrievedContext = "";
     const resolvedConversation = await resolveConversationMessage({
@@ -663,28 +677,32 @@ If the user asks for one word or one short sentence only, output exactly that co
       });
     }
 
-    if (userId) {
+    if (userId && !existingChat) {
       await createChat({
         id: activeChatId,
         user_id: userId,
         title: extractTitleFromPrompt(message || attachments?.[0]?.name || "New chat"),
       });
+    }
 
-      if (message || documentIds.length || imageUrl) {
-        await saveMessage({
-          chat_id: activeChatId,
-          role: "user",
-          content: message || "",
-          metadata: {
-            imageUrl: imageUrl ?? null,
-            imageContext: imageContext || null,
-            documentIds,
-            attachments,
-            mode,
-          },
-        });
-      }
+    if (userId && (message || documentIds.length || imageUrl)) {
+      await saveMessage({
+        chat_id: activeChatId,
+        role: "user",
+        content: message || "",
+        metadata: {
+          imageUrl: imageUrl ?? null,
+          imageContext: imageContext || null,
+          documentIds,
+          attachments,
+          mode,
+          authorId: userId,
+          authorEmail: userEmail || null,
+        },
+      });
+    }
 
+    if (userId) {
       await saveMessage({
         chat_id: activeChatId,
         role: "assistant",
@@ -733,8 +751,24 @@ If the user asks for one word or one short sentence only, output exactly that co
 
       fallbackAnswer ||= buildLocalFallbackAnswer(fallbackRequestMessage, fallbackMode, fallbackUserEmail);
 
+      if (fallbackUserId) {
+        await saveMessage({
+          chat_id: activeChatId,
+          role: "assistant",
+          content: fallbackAnswer,
+          metadata: {
+            imageUrl: null,
+            fileUrl: null,
+            fileName: null,
+            messageType: "chat",
+            mode: fallbackMode,
+            sources: [],
+          },
+        });
+      }
+
       return res.json({
-        chatId: req.body.chatId ?? uuid(),
+        chatId: activeChatId,
         answer: fallbackAnswer,
         generatedImageUrl: null,
         generatedFileUrl: null,
@@ -760,6 +794,46 @@ export async function getChatHistory(req, res) {
 
     const chats = await listChatsByUser(userId);
     return res.json({ chats });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+export async function createChatShareLink(req, res) {
+  try {
+    const { chatId } = req.params;
+    const { userId } = req.body;
+
+    if (!chatId || !userId) {
+      return res.status(400).json({ error: "chatId and userId are required." });
+    }
+
+    const share = await createOrGetChatShare(chatId, userId);
+    return res.json({
+      chatId: share.chat_id,
+      shareToken: share.share_token,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+export async function getSharedChat(req, res) {
+  try {
+    const { token } = req.params;
+    const { userId } = req.query;
+
+    if (!token || !userId) {
+      return res.status(400).json({ error: "share token and userId are required." });
+    }
+
+    const chat = await getSharedChatByToken(token, userId);
+
+    if (!chat) {
+      return res.status(404).json({ error: "Shared chat not found." });
+    }
+
+    return res.json({ chat });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

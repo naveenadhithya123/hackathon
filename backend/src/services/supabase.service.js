@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
 const isConfigured =
@@ -18,6 +19,29 @@ const supabase = isConfigured
 
 function toPgVector(vector) {
   return `[${vector.join(",")}]`;
+}
+
+const CHAT_SELECT =
+  "id, title, user_id, updated_at, created_at, messages(id, role, content, metadata, created_at)";
+
+function sortMessages(messages = []) {
+  return [...(messages || [])].sort((left, right) => {
+    const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightTime = right?.created_at ? new Date(right.created_at).getTime() : 0;
+    return leftTime - rightTime;
+  });
+}
+
+function mapChatRecord(chat, extras = {}) {
+  if (!chat) {
+    return null;
+  }
+
+  return {
+    ...chat,
+    ...extras,
+    messages: sortMessages(chat.messages || []),
+  };
 }
 
 export async function upsertProfile(profile) {
@@ -56,6 +80,57 @@ export async function createChat(chat) {
   return data;
 }
 
+export async function getOwnedChatById(chatId, userId) {
+  if (!supabase || !chatId || !userId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("chats")
+    .select(CHAT_SELECT)
+    .eq("id", chatId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return mapChatRecord(data);
+}
+
+export async function getChatByIdForUser(chatId, userId) {
+  if (!supabase || !chatId || !userId) {
+    return null;
+  }
+
+  const ownedChat = await getOwnedChatById(chatId, userId);
+
+  if (ownedChat) {
+    return {
+      ...ownedChat,
+      isOwned: true,
+      isSharedAccess: false,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("chat_members")
+    .select(`chat_id, chats(${CHAT_SELECT})`)
+    .eq("chat_id", chatId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return mapChatRecord(data?.chats, {
+    isOwned: false,
+    isSharedAccess: Boolean(data?.chats),
+  });
+}
+
 export async function saveMessage(message) {
   if (!supabase) {
     return message;
@@ -84,24 +159,145 @@ export async function listChatsByUser(userId) {
     return [];
   }
 
+  const [{ data: ownedChats, error: ownedError }, { data: memberChats, error: memberError }] =
+    await Promise.all([
+      supabase
+        .from("chats")
+        .select(CHAT_SELECT)
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false }),
+      supabase
+        .from("chat_members")
+        .select(`chat_id, chats(${CHAT_SELECT})`)
+        .eq("user_id", userId),
+    ]);
+
+  if (ownedError) {
+    throw new Error(ownedError.message);
+  }
+
+  if (memberError) {
+    throw new Error(memberError.message);
+  }
+
+  const merged = new Map();
+
+  for (const chat of ownedChats || []) {
+    merged.set(chat.id, mapChatRecord(chat, { isOwned: true, isSharedAccess: false }));
+  }
+
+  for (const membership of memberChats || []) {
+    const chat = membership?.chats;
+    if (!chat || merged.has(chat.id)) {
+      continue;
+    }
+
+    merged.set(chat.id, mapChatRecord(chat, { isOwned: false, isSharedAccess: true }));
+  }
+
+  return [...merged.values()].sort((left, right) => {
+    const leftTime = left?.updated_at ? new Date(left.updated_at).getTime() : 0;
+    const rightTime = right?.updated_at ? new Date(right.updated_at).getTime() : 0;
+    return rightTime - leftTime;
+  });
+}
+
+export async function createOrGetChatShare(chatId, ownerUserId) {
+  if (!supabase) {
+    return {
+      chat_id: chatId,
+      owner_user_id: ownerUserId,
+      share_token: crypto.randomBytes(18).toString("hex"),
+    };
+  }
+
+  const ownedChat = await getOwnedChatById(chatId, ownerUserId);
+
+  if (!ownedChat) {
+    throw new Error("Only the chat owner can create a share link.");
+  }
+
+  const { data: existingShare, error: existingError } = await supabase
+    .from("chat_shares")
+    .select("chat_id, owner_user_id, share_token")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw new Error(existingError.message);
+  }
+
+  if (existingShare) {
+    return existingShare;
+  }
+
   const { data, error } = await supabase
-    .from("chats")
-    .select("id, title, updated_at, messages(id, role, content, metadata, created_at)")
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false });
+    .from("chat_shares")
+    .insert({
+      chat_id: chatId,
+      owner_user_id: ownerUserId,
+      share_token: crypto.randomBytes(18).toString("hex"),
+    })
+    .select("chat_id, owner_user_id, share_token")
+    .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data || []).map((chat) => ({
-    ...chat,
-    messages: [...(chat.messages || [])].sort((left, right) => {
-      const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0;
-      const rightTime = right?.created_at ? new Date(right.created_at).getTime() : 0;
-      return leftTime - rightTime;
-    }),
-  }));
+  return data;
+}
+
+export async function addChatMember(chatId, userId) {
+  if (!supabase || !chatId || !userId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("chat_members")
+    .upsert({
+      chat_id: chatId,
+      user_id: userId,
+      last_seen_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function getSharedChatByToken(token, userId) {
+  if (!supabase || !token || !userId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("chat_shares")
+    .select(`chat_id, owner_user_id, share_token, chats(${CHAT_SELECT})`)
+    .eq("share_token", token)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data?.chats) {
+    return null;
+  }
+
+  if (data.owner_user_id !== userId) {
+    await addChatMember(data.chat_id, userId);
+  }
+
+  return mapChatRecord(data.chats, {
+    shareToken: data.share_token,
+    isOwned: data.owner_user_id === userId,
+    isSharedAccess: data.owner_user_id !== userId,
+  });
 }
 
 export async function saveDocument(document) {

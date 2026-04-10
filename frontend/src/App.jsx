@@ -9,6 +9,7 @@ import { useFileUpload } from "./hooks/useFileUpload.js";
 import { useSpeech } from "./hooks/useSpeech.js";
 import {
   bootstrapProfile,
+  createChatShareLink,
   generateQuiz,
   resolveEmailIntent,
   sendAnswerEmail,
@@ -425,6 +426,22 @@ function buildEmailPayloadFromIntent(intent, fallback) {
   };
 }
 
+function getShareTokenFromUrl() {
+  return new URLSearchParams(window.location.search).get("share") || "";
+}
+
+function writeShareTokenToUrl(token = "") {
+  const url = new URL(window.location.href);
+
+  if (token) {
+    url.searchParams.set("share", token);
+  } else {
+    url.searchParams.delete("share");
+  }
+
+  window.history.replaceState({}, "", url.toString());
+}
+
 export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [session, setSession] = useState(null);
@@ -443,14 +460,19 @@ export default function App() {
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [activeDocumentIds, setActiveDocumentIds] = useState([]);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [activeShareToken, setActiveShareToken] = useState("");
+  const [liveTypingUsers, setLiveTypingUsers] = useState([]);
   const fileInputRef = useRef(null);
   const userMenuRef = useRef(null);
+  const sharedChannelRef = useRef(null);
+  const typingResetRef = useRef(null);
 
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? null;
 
   const {
     chats,
+    currentChat,
     currentChatId,
     messages,
     isLoading,
@@ -458,6 +480,8 @@ export default function App() {
     loadHistory,
     startNewChat,
     openChat,
+    openSharedChatByToken,
+    refreshCurrentChat,
     sendMessage,
     appendAssistantMessage,
     appendLocalMessage,
@@ -533,9 +557,40 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (userId) {
-      loadHistory();
+    if (!userId) {
+      return;
     }
+
+    let isCancelled = false;
+
+    async function loadInitialData() {
+      await loadHistory();
+
+      const shareToken = getShareTokenFromUrl();
+      if (!shareToken || isCancelled) {
+        return;
+      }
+
+      try {
+        const sharedChat = await openSharedChatByToken(shareToken);
+        if (!sharedChat || isCancelled) {
+          return;
+        }
+
+        setActiveShareToken(shareToken);
+        setSidebarView("chats");
+      } catch (_error) {
+        if (!isCancelled) {
+          setActiveShareToken("");
+        }
+      }
+    }
+
+    loadInitialData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [userId]);
 
   useEffect(() => {
@@ -590,6 +645,44 @@ export default function App() {
   );
   const latestQuestion = latestConversationContext.question || lastQuestion;
   const latestAnswer = latestConversationContext.answer || lastAssistantAnswer;
+  const sharedRoomToken = currentChat?.shareToken || activeShareToken;
+
+  async function syncSharedPresence(typing = false) {
+    if (!sharedChannelRef.current || !userId) {
+      return;
+    }
+
+    try {
+      await sharedChannelRef.current.track({
+        userId,
+        userEmail: userEmail || "",
+        typing,
+        updatedAt: Date.now(),
+      });
+    } catch (_error) {
+      // Ignore transient presence errors.
+    }
+  }
+
+  async function broadcastSharedChatRefresh() {
+    if (!sharedChannelRef.current || !currentChatId || !userId) {
+      return;
+    }
+
+    try {
+      await sharedChannelRef.current.send({
+        type: "broadcast",
+        event: "messages-updated",
+        payload: {
+          chatId: currentChatId,
+          userId,
+          sentAt: Date.now(),
+        },
+      });
+    } catch (_error) {
+      // Ignore transient realtime errors.
+    }
+  }
 
   function handleNewChat() {
     startNewChat();
@@ -601,6 +694,9 @@ export default function App() {
     setLastEmailTarget("");
     setSidebarView("chats");
     setMobileSidebarOpen(false);
+    setActiveShareToken("");
+    setLiveTypingUsers([]);
+    writeShareTokenToUrl("");
   }
 
   async function attachFile(file) {
@@ -1080,6 +1176,7 @@ export default function App() {
     }
 
     setLastQuestion(trimmed);
+    await syncSharedPresence(false);
 
     const optimisticAssistant = {
       id: `assistant-pending-${Date.now()}`,
@@ -1102,6 +1199,7 @@ export default function App() {
         mode: activeMode,
         userEmail: userEmail || "",
       });
+      await broadcastSharedChatRefresh();
     } finally {
       setPendingAttachments((previous) => previous.filter((item) => item.status !== "ready"));
       setIsProcessingAction(false);
@@ -1110,6 +1208,8 @@ export default function App() {
 
   function handleOpenChat(chat) {
     openChat(chat);
+    setActiveShareToken((previous) => chat.shareToken || (chat.id === currentChatId ? previous : ""));
+    writeShareTokenToUrl(chat.shareToken || "");
     const chatContext = extractConversationContext(
       sortChatMessages(chat.messages || []).map((message) => ({
         role: message.role,
@@ -1132,32 +1232,121 @@ export default function App() {
   }
 
   async function handleShareCurrentChat() {
-    const transcript = messages
-      .filter((message) => message.role === "user" || message.role === "assistant")
-      .map((message) => `${message.role === "user" ? "User" : "AI"}: ${message.content || ""}`)
-      .join("\n\n")
-      .trim();
-
-    if (!transcript) {
+    if (!currentChatId || !userId) {
       return;
     }
 
-    const payload = {
-      title: "AI Hackathon Chat",
-      text: transcript,
-    };
-
     try {
+      const result = await createChatShareLink(currentChatId, userId);
+      const shareToken = result.shareToken || "";
+
+      if (!shareToken) {
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("share", shareToken);
+      const shareUrl = url.toString();
+
+      setActiveShareToken(shareToken);
+      writeShareTokenToUrl(shareToken);
+
+      const payload = {
+        title: "Smart GPT Shared Chat",
+        text: "Join my Smart GPT shared chat",
+        url: shareUrl,
+      };
+
       if (navigator.share) {
         await navigator.share(payload);
         return;
       }
 
-      await navigator.clipboard.writeText(transcript);
+      await navigator.clipboard.writeText(shareUrl);
     } catch (_error) {
       // ignore user cancellation
     }
   }
+
+  useEffect(() => {
+    if (!supabase || !currentChatId || !userId || !sharedRoomToken) {
+      setLiveTypingUsers([]);
+      return undefined;
+    }
+
+    let isActive = true;
+    const channel = supabase.channel(`shared-chat:${currentChatId}`, {
+      config: {
+        presence: {
+          key: `${currentChatId}-${userId}`,
+        },
+      },
+    });
+
+    sharedChannelRef.current = channel;
+
+    channel.on("broadcast", { event: "messages-updated" }, async ({ payload }) => {
+      if (!isActive || payload?.userId === userId) {
+        return;
+      }
+
+      await refreshCurrentChat(sharedRoomToken);
+    });
+
+    channel.on("presence", { event: "sync" }, () => {
+      if (!isActive) {
+        return;
+      }
+
+      const nextTypingUsers = Object.values(channel.presenceState())
+        .flat()
+        .filter((item) => item?.userId && item.userId !== userId && item.typing)
+        .map((item) => item.userEmail || "Someone");
+
+      setLiveTypingUsers([...new Set(nextTypingUsers)]);
+    });
+
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED" && isActive) {
+        await syncSharedPresence(false);
+      }
+    });
+
+    return () => {
+      isActive = false;
+      if (typingResetRef.current) {
+        window.clearTimeout(typingResetRef.current);
+      }
+      setLiveTypingUsers([]);
+      sharedChannelRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [currentChatId, sharedRoomToken, userId, userEmail]);
+
+  useEffect(() => {
+    if (!sharedRoomToken || !sharedChannelRef.current || !userId) {
+      return undefined;
+    }
+
+    const hasDraft = Boolean(composerValue.trim());
+    syncSharedPresence(hasDraft);
+
+    if (typingResetRef.current) {
+      window.clearTimeout(typingResetRef.current);
+    }
+
+    if (hasDraft) {
+      typingResetRef.current = window.setTimeout(() => {
+        syncSharedPresence(false);
+      }, 1500);
+    }
+
+    return () => {
+      if (typingResetRef.current) {
+        window.clearTimeout(typingResetRef.current);
+      }
+    };
+  }, [composerValue, sharedRoomToken, userId, userEmail]);
 
   if (!canUseApp) {
     return (
@@ -1368,6 +1557,7 @@ export default function App() {
               onSpeakMessage={speak}
               isSpeaking={isSpeaking}
               speakingText={speakingText}
+              liveTypingUsers={liveTypingUsers}
             />
 
             <InputBar {...composerProps} />

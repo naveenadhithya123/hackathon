@@ -340,6 +340,10 @@ export default function MessageBubble({ message, onSpeakMessage, isSpeaking, spe
           hasImage ? "has-image" : "text-only"
         }`}
       >
+        {isUser && message.authorLabel ? (
+          <div className="message-author">{message.authorLabel}</div>
+        ) : null}
+
         {isUser && displayedContent ? (
           <button className="message-copy-fab" type="button" onClick={handleCopyMessage}>
             {copied ? "Copied" : "Copy"}

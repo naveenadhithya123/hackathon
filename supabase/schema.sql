@@ -16,6 +16,22 @@ create table if not exists chats (
   updated_at timestamptz default now()
 );
 
+create table if not exists chat_shares (
+  chat_id uuid primary key references chats(id) on delete cascade,
+  owner_user_id uuid not null,
+  share_token text unique not null default encode(gen_random_bytes(18), 'hex'),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists chat_members (
+  chat_id uuid not null references chats(id) on delete cascade,
+  user_id uuid not null,
+  joined_at timestamptz default now(),
+  last_seen_at timestamptz default now(),
+  primary key (chat_id, user_id)
+);
+
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   chat_id uuid not null references chats(id) on delete cascade,
@@ -86,6 +102,8 @@ $$;
 
 create index if not exists idx_messages_chat_id on messages(chat_id);
 create index if not exists idx_chats_user_id on chats(user_id);
+create index if not exists idx_chat_shares_token on chat_shares(share_token);
+create index if not exists idx_chat_members_user_id on chat_members(user_id);
 create index if not exists idx_documents_user_id on documents(user_id);
 
 create index if not exists idx_document_chunks_embedding

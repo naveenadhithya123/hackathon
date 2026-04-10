@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getHistory, sendChatMessage } from "../services/api.js";
+import { getHistory, getSharedChat, sendChatMessage } from "../services/api.js";
 import { createWelcomeMessage } from "../store/chatStore.js";
 
 function findLatestAssistantAnswer(messages = []) {
@@ -22,8 +22,26 @@ function sortChatMessages(messages = []) {
   });
 }
 
+function mapChatMessages(messages = []) {
+  return sortChatMessages(messages || []).map((message) => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    attachments: message.metadata?.attachments || [],
+    sources: message.metadata?.sources || [],
+    imageUrl: message.metadata?.imageUrl || "",
+    fileUrl: message.metadata?.fileUrl || "",
+    fileName: message.metadata?.fileName || "",
+    messageType: message.metadata?.messageType || "chat",
+    authorLabel: message.metadata?.authorEmail || "",
+    status: "done",
+    animate: false,
+  }));
+}
+
 export function useChat({ userId }) {
   const [chats, setChats] = useState([]);
+  const [currentChat, setCurrentChat] = useState(null);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [messages, setMessages] = useState([createWelcomeMessage()]);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,14 +49,17 @@ export function useChat({ userId }) {
 
   async function loadHistory() {
     if (!userId) {
-      return;
+      return [];
     }
 
     const result = await getHistory(userId);
-    setChats(result.chats || []);
+    const nextChats = result.chats || [];
+    setChats(nextChats);
+    return nextChats;
   }
 
   function startNewChat() {
+    setCurrentChat(null);
     setCurrentChatId(null);
     setMessages([createWelcomeMessage()]);
     setLastAssistantAnswer("");
@@ -46,22 +67,51 @@ export function useChat({ userId }) {
 
   function openChat(chat) {
     setCurrentChatId(chat.id);
-    const mappedMessages = sortChatMessages(chat.messages || []).map((message) => ({
-        id: message.id,
-        role: message.role,
-        content: message.content,
-        attachments: message.metadata?.attachments || [],
-        sources: message.metadata?.sources || [],
-        imageUrl: message.metadata?.imageUrl || "",
-        fileUrl: message.metadata?.fileUrl || "",
-        fileName: message.metadata?.fileName || "",
-        messageType: message.metadata?.messageType || "chat",
-        status: "done",
-        animate: false,
-      }));
+    setCurrentChat(chat);
+    const mappedMessages = mapChatMessages(chat.messages || []);
 
     setMessages(mappedMessages);
     setLastAssistantAnswer(findLatestAssistantAnswer(mappedMessages));
+  }
+
+  async function openSharedChatByToken(shareToken) {
+    if (!shareToken || !userId) {
+      return null;
+    }
+
+    const result = await getSharedChat(shareToken, userId);
+    const sharedChat = result.chat || null;
+
+    if (!sharedChat) {
+      return null;
+    }
+
+    setChats((previous) => {
+      const next = previous.filter((chat) => chat.id !== sharedChat.id);
+      return [sharedChat, ...next];
+    });
+    openChat(sharedChat);
+    return sharedChat;
+  }
+
+  async function refreshCurrentChat(shareToken = "") {
+    if (!currentChatId || !userId) {
+      return null;
+    }
+
+    if (shareToken) {
+      return openSharedChatByToken(shareToken);
+    }
+
+    const nextChats = await loadHistory();
+    const matchedChat = (nextChats || []).find((chat) => chat.id === currentChatId);
+
+    if (matchedChat) {
+      openChat(matchedChat);
+      return matchedChat;
+    }
+
+    return null;
   }
 
   async function sendMessage({
@@ -80,6 +130,7 @@ export function useChat({ userId }) {
       id: `user-${Date.now()}`,
       role: "user",
       content,
+      authorLabel: userEmail || "",
       attachments,
       fileUrl: primaryDocument?.fileUrl || "",
       fileName: primaryDocument?.name || "",
@@ -147,6 +198,9 @@ export function useChat({ userId }) {
         );
       });
       setCurrentChatId(result.chatId || currentChatId);
+      if (result.chatId) {
+        setCurrentChat((previous) => (previous ? { ...previous, id: result.chatId } : previous));
+      }
       setLastAssistantAnswer(result.answer);
       await loadHistory();
     } catch (error) {
@@ -192,6 +246,7 @@ export function useChat({ userId }) {
 
   return {
     chats,
+    currentChat,
     currentChatId,
     messages,
     isLoading,
@@ -199,6 +254,8 @@ export function useChat({ userId }) {
     loadHistory,
     startNewChat,
     openChat,
+    openSharedChatByToken,
+    refreshCurrentChat,
     sendMessage,
     appendAssistantMessage,
     appendLocalMessage,
