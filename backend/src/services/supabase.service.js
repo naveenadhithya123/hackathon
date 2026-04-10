@@ -22,7 +22,7 @@ function toPgVector(vector) {
 }
 
 const CHAT_SELECT =
-  "id, title, user_id, updated_at, created_at, messages(id, role, content, metadata, created_at)";
+  "id, title, user_id, updated_at, created_at, messages(id, role, content, metadata, created_at), chat_shares(share_token)";
 
 function sortMessages(messages = []) {
   return [...(messages || [])].sort((left, right) => {
@@ -37,9 +37,14 @@ function mapChatRecord(chat, extras = {}) {
     return null;
   }
 
+  const shareToken = Array.isArray(chat.chat_shares)
+    ? chat.chat_shares[0]?.share_token || ""
+    : chat.chat_shares?.share_token || "";
+
   return {
     ...chat,
     ...extras,
+    shareToken: extras.shareToken || shareToken,
     messages: sortMessages(chat.messages || []),
   };
 }

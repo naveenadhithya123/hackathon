@@ -33,7 +33,7 @@ export default function ChatWindow({
     window.requestAnimationFrame(() => {
       marker.scrollIntoView({ block: "end", behavior: "smooth" });
     });
-  }, [messages]);
+  }, [messages, liveTypingUsers]);
 
   return (
     <section className="conversation-scroll" ref={scrollRef}>

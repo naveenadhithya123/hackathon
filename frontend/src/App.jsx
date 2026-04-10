@@ -1208,7 +1208,7 @@ export default function App() {
 
   function handleOpenChat(chat) {
     openChat(chat);
-    setActiveShareToken((previous) => chat.shareToken || (chat.id === currentChatId ? previous : ""));
+    setActiveShareToken(chat.shareToken || "");
     writeShareTokenToUrl(chat.shareToken || "");
     const chatContext = extractConversationContext(
       sortChatMessages(chat.messages || []).map((message) => ({
@@ -1340,7 +1340,7 @@ export default function App() {
       sharedChannelRef.current = null;
       supabase.removeChannel(channel);
     };
-  }, [currentChatId, sharedRoomToken, userId, userEmail]);
+  }, [currentChatId, sharedRoomToken, userId, userEmail, refreshCurrentChat]);
 
   useEffect(() => {
     if (!sharedRoomToken || !sharedChannelRef.current || !userId) {
