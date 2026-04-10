@@ -1125,7 +1125,7 @@ export default function App() {
             >
               <span className="mobile-nav-dots" />
             </button>
-            <h1>ABC Assistant</h1>
+            <h1>Smart GPT🐦‍🔥</h1>
             <p>{AI_SPACES.find((space) => space.id === activeMode)?.subtitle || "Advanced AI workspace"}</p>
           </div>
           <div className="topbar-actions">
