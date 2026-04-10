@@ -746,7 +746,13 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
 
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
+.user-menu {
+  position: relative;
+}
+
 .user-badge {
+  display: inline-flex;
+  align-items: center;
   padding: 8px 14px;
   border-radius: 999px;
   background: rgba(98,200,255,0.1);
@@ -754,6 +760,38 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   font-size: 0.88rem;
   color: var(--accent-2) !important;
   -webkit-text-fill-color: var(--accent-2);
+  cursor: pointer;
+}
+
+.user-menu-trigger {
+  appearance: none;
+}
+
+.user-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 140px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(10, 14, 24, 0.96);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.36);
+  z-index: 25;
+}
+
+.user-menu-item {
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(98,200,255,0.08);
+  color: var(--text);
+  text-align: left;
+}
+
+.user-menu-item:hover {
+  background: rgba(98,200,255,0.16);
 }
 
 /* ── Conversation ───────────────────────────────────────────────────────────── */
@@ -1508,14 +1546,13 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     gap: 10px;
   }
   .topbar h1 {
-    font-size: 1.05rem;
+    font-size: 1.08rem;
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .topbar-brand-copy p {
-    max-width: 24ch;
-    line-height: 1.3;
+    display: none;
   }
   .topbar-actions {
     width: auto;
@@ -1523,9 +1560,13 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     align-self: start;
   }
   .user-badge {
-    max-width: min(44vw, 200px);
+    max-width: min(36vw, 160px);
     font-size: 0.84rem;
     padding: 7px 12px;
+  }
+  .user-menu-panel {
+    right: 0;
+    min-width: 124px;
   }
   .composer-card {
     grid-template-columns: 42px minmax(0, 1fr) auto;

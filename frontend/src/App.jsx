@@ -442,7 +442,9 @@ export default function App() {
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [activeDocumentIds, setActiveDocumentIds] = useState([]);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const userMenuRef = useRef(null);
 
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? null;
@@ -535,6 +537,21 @@ export default function App() {
       loadHistory();
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (!isUserMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (!userMenuRef.current?.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isUserMenuOpen]);
 
   const canUseApp = !authEnabled || !!session || !supabase;
   const showSidebarContent = sidebarOpen || mobileSidebarOpen;
@@ -673,17 +690,38 @@ export default function App() {
   }
 
   async function handleMic() {
-    if (isRecording) {
-      setIsProcessingAction(true);
-      const text = await stopRecording();
-      if (text) {
-        setComposerValue(text);
+    try {
+      if (isRecording) {
+        setIsProcessingAction(true);
+        const text = await stopRecording();
+        if (text) {
+          setComposerValue(text);
+        }
+        setIsProcessingAction(false);
+        return;
       }
+
+      await startRecording(false);
+    } catch (error) {
       setIsProcessingAction(false);
+      appendAssistantMessage({
+        id: `assistant-mic-error-${Date.now()}`,
+        role: "assistant",
+        content:
+          error.message ||
+          "Voice input is not available on this phone right now. Please allow microphone access and try again.",
+        status: "done",
+      });
+    }
+  }
+
+  async function handleLogout() {
+    if (!supabase || !authEnabled) {
       return;
     }
 
-    await startRecording(false);
+    await supabase.auth.signOut();
+    setIsUserMenuOpen(false);
   }
 
   async function handleSend() {
@@ -1268,7 +1306,26 @@ export default function App() {
             <button className="pill-button" onClick={handleShareCurrentChat}>
               Share chat
             </button>
-            <div className="user-badge">{userEmail || "Guest mode"}</div>
+            <div className="user-menu" ref={userMenuRef}>
+              <button
+                className="user-badge user-menu-trigger"
+                type="button"
+                onClick={() => {
+                  if (userEmail) {
+                    setIsUserMenuOpen((value) => !value);
+                  }
+                }}
+              >
+                {userEmail || "Guest mode"}
+              </button>
+              {isUserMenuOpen ? (
+                <div className="user-menu-panel">
+                  <button className="user-menu-item" type="button" onClick={handleLogout}>
+                    Logout
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
 

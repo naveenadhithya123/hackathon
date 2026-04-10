@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { transcribeAudio } from "../services/api.js";
 
 export function useSpeech() {
   const [isRecording, setIsRecording] = useState(false);
@@ -13,12 +14,16 @@ export function useSpeech() {
   const rafRef = useRef(null);
   const recognitionRef = useRef(null);
   const utteranceRef = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const recordingModeRef = useRef("idle");
 
   useEffect(() => {
     return () => {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
+      recorderRef.current?.stop?.();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       recognitionRef.current?.stop?.();
       window.speechSynthesis?.cancel();
@@ -44,15 +49,40 @@ export function useSpeech() {
     rafRef.current = requestAnimationFrame(monitorAudioLevel);
   }
 
-  async function beginAudioMeter() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
+  async function getAudioStream() {
+    if (streamRef.current) {
+      return streamRef.current;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    streamRef.current = stream;
+    return stream;
+  }
+
+  async function beginAudioMeter(stream) {
+    const activeStream = stream || await getAudioStream();
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    const audioContext = new AudioContextCtor();
+    if (audioContext.state === "suspended") {
+      await audioContext.resume().catch(() => {});
+    }
+
+    const source = audioContext.createMediaStreamSource(activeStream);
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 256;
     source.connect(analyser);
 
-    streamRef.current = stream;
     audioContextRef.current = audioContext;
     analyserRef.current = analyser;
     monitorAudioLevel();
@@ -70,16 +100,7 @@ export function useSpeech() {
     analyserRef.current = null;
   }
 
-  async function startRecording() {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      throw new Error("Speech recognition is not supported in this browser.");
-    }
-
-    setTranscript("");
-    transcriptRef.current = "";
+  async function startRecognitionRecording(SpeechRecognition) {
     await beginAudioMeter();
 
     const recognition = new SpeechRecognition();
@@ -108,10 +129,97 @@ export function useSpeech() {
 
     recognitionRef.current = recognition;
     recognition.start();
+    recordingModeRef.current = "recognition";
     setIsRecording(true);
   }
 
+  function pickRecorderMimeType() {
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+
+    return candidates.find((candidate) => window.MediaRecorder?.isTypeSupported?.(candidate)) || "";
+  }
+
+  async function startRecorderRecording() {
+    if (!window.MediaRecorder) {
+      throw new Error("Audio recording is not supported in this browser.");
+    }
+
+    const stream = await getAudioStream();
+    await beginAudioMeter(stream);
+
+    chunksRef.current = [];
+    const mimeType = pickRecorderMimeType();
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+    recorder.ondataavailable = (event) => {
+      if (event.data?.size) {
+        chunksRef.current.push(event.data);
+      }
+    };
+
+    recorder.onerror = () => {
+      setIsRecording(false);
+      stopAudioMeter();
+    };
+
+    recorderRef.current = recorder;
+    recorder.start(250);
+    recordingModeRef.current = "recorder";
+    setIsRecording(true);
+  }
+
+  async function startRecording() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    setTranscript("");
+    transcriptRef.current = "";
+    const prefersRecorderFallback =
+      /android|iphone|ipad|ipod/i.test(navigator.userAgent) || !SpeechRecognition;
+
+    if (prefersRecorderFallback) {
+      await startRecorderRecording();
+      return;
+    }
+
+    await startRecognitionRecording(SpeechRecognition);
+  }
+
   async function stopRecording() {
+    if (recordingModeRef.current === "recorder" && recorderRef.current) {
+      const recorder = recorderRef.current;
+
+      return new Promise((resolve) => {
+        recorder.onstop = async () => {
+          setIsRecording(false);
+          stopAudioMeter();
+          recorderRef.current = null;
+          recordingModeRef.current = "idle";
+
+          const blob = new Blob(chunksRef.current, {
+            type: recorder.mimeType || "audio/webm",
+          });
+          chunksRef.current = [];
+
+          try {
+            const result = await transcribeAudio(blob);
+            transcriptRef.current = String(result.text || "").trim();
+            setTranscript(transcriptRef.current);
+            resolve(transcriptRef.current);
+          } catch {
+            resolve(transcriptRef.current.trim());
+          }
+        };
+
+        recorder.stop();
+      });
+    }
+
     if (!recognitionRef.current) {
       return transcriptRef.current.trim();
     }
@@ -124,6 +232,8 @@ export function useSpeech() {
       recognitionRef.current.onend = () => {
         setIsRecording(false);
         stopAudioMeter();
+        recognitionRef.current = null;
+        recordingModeRef.current = "idle";
         finalText();
       };
 
