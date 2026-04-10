@@ -1233,6 +1233,12 @@ export default function App() {
 
   async function handleShareCurrentChat() {
     if (!currentChatId || !userId) {
+      appendAssistantMessage({
+        id: `assistant-share-info-${Date.now()}`,
+        role: "assistant",
+        content: "Open or create a chat first, then I can generate a share link for it.",
+        status: "done",
+      });
       return;
     }
 
@@ -1263,8 +1269,21 @@ export default function App() {
       }
 
       await navigator.clipboard.writeText(shareUrl);
-    } catch (_error) {
-      // ignore user cancellation
+      appendAssistantMessage({
+        id: `assistant-share-copied-${Date.now()}`,
+        role: "assistant",
+        content: "Share link copied. You can paste it anywhere.",
+        status: "done",
+      });
+    } catch (error) {
+      if (String(error?.message || "").trim()) {
+        appendAssistantMessage({
+          id: `assistant-share-error-${Date.now()}`,
+          role: "assistant",
+          content: error.message,
+          status: "done",
+        });
+      }
     }
   }
 
@@ -1506,6 +1525,21 @@ export default function App() {
                 }}
               >
                 {userEmail || "Guest mode"}
+              </button>
+              <button
+                className="mobile-share-button"
+                type="button"
+                onClick={handleShareCurrentChat}
+                aria-label="Share chat"
+                title="Share chat"
+              >
+                <svg viewBox="0 0 24 24" className="toolbar-icon" aria-hidden="true">
+                  <circle cx="18" cy="5" r="2.5" />
+                  <circle cx="6" cy="12" r="2.5" />
+                  <circle cx="18" cy="19" r="2.5" />
+                  <path d="m8.2 11 7.6-4.3" />
+                  <path d="m8.2 13 7.6 4.3" />
+                </svg>
               </button>
               {isUserMenuOpen ? (
                 <div className="user-menu-panel">

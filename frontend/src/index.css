@@ -764,6 +764,23 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   position: relative;
 }
 
+.mobile-share-button {
+  display: none;
+  width: 38px;
+  height: 38px;
+  margin: 8px 0 0 auto;
+  border-radius: 12px;
+  border: 1px solid rgba(98,200,255,0.2);
+  background: rgba(98,200,255,0.08);
+  color: var(--accent-2);
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-share-button:hover {
+  background: rgba(98,200,255,0.16);
+}
+
 .user-badge {
   display: inline-flex;
   align-items: center;
@@ -1584,10 +1601,18 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     justify-content: flex-end;
     align-self: start;
   }
+  .user-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
   .user-badge {
     max-width: min(28vw, 124px);
     font-size: 0.84rem;
     padding: 7px 10px;
+  }
+  .mobile-share-button {
+    display: inline-flex;
   }
   .user-menu-panel {
     right: 0;
