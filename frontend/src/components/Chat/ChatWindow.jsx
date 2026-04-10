@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import MessageBubble from "./MessageBubble.jsx";
 import TypingIndicator from "./TypingIndicator.jsx";
 
@@ -21,41 +21,6 @@ export default function ChatWindow({
   const showWelcome = messages.length <= 1 && messages[0]?.id === "welcome-message";
   const scrollRef = useRef(null);
   const endRef = useRef(null);
-  const stickToBottomRef = useRef(true);
-
-  useEffect(() => {
-    const container = scrollRef.current;
-
-    if (!container) {
-      return undefined;
-    }
-
-    const updateStickiness = () => {
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      stickToBottomRef.current = distanceFromBottom < 120;
-    };
-
-    updateStickiness();
-    container.addEventListener("scroll", updateStickiness, { passive: true });
-
-    return () => {
-      container.removeEventListener("scroll", updateStickiness);
-    };
-  }, []);
-
-  useEffect(() => {
-    const container = scrollRef.current;
-    const marker = endRef.current;
-
-    if (!container || !marker || !stickToBottomRef.current) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      marker.scrollIntoView({ block: "end", behavior: "smooth" });
-    });
-  }, [messages, liveTypingUsers]);
 
   return (
     <section className="conversation-scroll" ref={scrollRef}>
