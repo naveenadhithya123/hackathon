@@ -467,6 +467,11 @@ export default function App() {
   const sharedChannelRef = useRef(null);
   const typingResetRef = useRef(null);
   const typingUserTimeoutsRef = useRef(new Map());
+  const clientSessionIdRef = useRef(
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  );
 
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? null;
@@ -696,6 +701,7 @@ export default function App() {
         payload: {
           chatId: currentChatId,
           userId,
+          clientSessionId: clientSessionIdRef.current,
           userEmail: userEmail || "",
           typing,
           sentAt: Date.now(),
@@ -718,6 +724,7 @@ export default function App() {
         payload: {
           chatId: currentChatId,
           userId,
+          clientSessionId: clientSessionIdRef.current,
           sentAt: Date.now(),
         },
       });
@@ -1351,7 +1358,7 @@ export default function App() {
     sharedChannelRef.current = channel;
 
     channel.on("broadcast", { event: "messages-updated" }, async ({ payload }) => {
-      if (!isActive || payload?.userId === userId) {
+      if (!isActive || payload?.clientSessionId === clientSessionIdRef.current) {
         return;
       }
 
@@ -1359,7 +1366,7 @@ export default function App() {
     });
 
     channel.on("broadcast", { event: "typing-updated" }, ({ payload }) => {
-      if (!isActive || payload?.userId === userId) {
+      if (!isActive || payload?.clientSessionId === clientSessionIdRef.current) {
         return;
       }
 
