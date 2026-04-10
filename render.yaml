@@ -1,7 +1,7 @@
 services:
   - type: web
     name: abc-ai-backend
-    env: node
+    runtime: node
     rootDir: backend
     plan: free
     buildCommand: npm install
@@ -61,12 +61,14 @@ services:
       - key: BREVO_SENDER_NAME
         value: AI Hackathon
 
-  - type: static
+  - type: web
     name: abc-ai-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishPath: dist
-    pullRequestPreviewsEnabled: true
+    staticPublishPath: ./dist
+    previews:
+      generation: automatic
     envVars:
       - key: NODE_VERSION
         value: 22
