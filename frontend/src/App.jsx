@@ -466,6 +466,7 @@ export default function App() {
   const userMenuRef = useRef(null);
   const sharedChannelRef = useRef(null);
   const typingResetRef = useRef(null);
+  const typingUserTimeoutsRef = useRef(new Map());
 
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? null;
@@ -647,17 +648,58 @@ export default function App() {
   const latestAnswer = latestConversationContext.answer || lastAssistantAnswer;
   const sharedRoomToken = currentChat?.shareToken || activeShareToken;
 
+  function clearRemoteTypingUser(targetUserId) {
+    const timeoutId = typingUserTimeoutsRef.current.get(targetUserId);
+
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      typingUserTimeoutsRef.current.delete(targetUserId);
+    }
+
+    setLiveTypingUsers((previous) =>
+      previous.filter((item) => item.userId !== targetUserId),
+    );
+  }
+
+  function markRemoteTypingUser(targetUserId, label = "Someone") {
+    if (!targetUserId) {
+      return;
+    }
+
+    const existingTimeout = typingUserTimeoutsRef.current.get(targetUserId);
+    if (existingTimeout) {
+      window.clearTimeout(existingTimeout);
+    }
+
+    setLiveTypingUsers((previous) => {
+      const next = previous.filter((item) => item.userId !== targetUserId);
+      next.push({ userId: targetUserId, label: label || "Someone" });
+      return next;
+    });
+
+    const timeoutId = window.setTimeout(() => {
+      clearRemoteTypingUser(targetUserId);
+    }, 1800);
+
+    typingUserTimeoutsRef.current.set(targetUserId, timeoutId);
+  }
+
   async function syncSharedPresence(typing = false) {
-    if (!sharedChannelRef.current || !userId) {
+    if (!sharedChannelRef.current || !userId || !currentChatId) {
       return;
     }
 
     try {
-      await sharedChannelRef.current.track({
-        userId,
-        userEmail: userEmail || "",
-        typing,
-        updatedAt: Date.now(),
+      await sharedChannelRef.current.send({
+        type: "broadcast",
+        event: "typing-updated",
+        payload: {
+          chatId: currentChatId,
+          userId,
+          userEmail: userEmail || "",
+          typing,
+          sentAt: Date.now(),
+        },
       });
     } catch (_error) {
       // Ignore transient presence errors.
@@ -696,6 +738,10 @@ export default function App() {
     setMobileSidebarOpen(false);
     setActiveShareToken("");
     setLiveTypingUsers([]);
+    for (const timeoutId of typingUserTimeoutsRef.current.values()) {
+      window.clearTimeout(timeoutId);
+    }
+    typingUserTimeoutsRef.current.clear();
     writeShareTokenToUrl("");
   }
 
@@ -1312,17 +1358,17 @@ export default function App() {
       await refreshCurrentChat(sharedRoomToken);
     });
 
-    channel.on("presence", { event: "sync" }, () => {
-      if (!isActive) {
+    channel.on("broadcast", { event: "typing-updated" }, ({ payload }) => {
+      if (!isActive || payload?.userId === userId) {
         return;
       }
 
-      const nextTypingUsers = Object.values(channel.presenceState())
-        .flat()
-        .filter((item) => item?.userId && item.userId !== userId && item.typing)
-        .map((item) => item.userEmail || "Someone");
+      if (payload?.typing) {
+        markRemoteTypingUser(payload.userId, payload.userEmail || "Someone");
+        return;
+      }
 
-      setLiveTypingUsers([...new Set(nextTypingUsers)]);
+      clearRemoteTypingUser(payload?.userId);
     });
 
     channel.subscribe(async (status) => {
@@ -1336,6 +1382,10 @@ export default function App() {
       if (typingResetRef.current) {
         window.clearTimeout(typingResetRef.current);
       }
+      for (const timeoutId of typingUserTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      typingUserTimeoutsRef.current.clear();
       setLiveTypingUsers([]);
       sharedChannelRef.current = null;
       supabase.removeChannel(channel);
@@ -1591,7 +1641,7 @@ export default function App() {
               onSpeakMessage={speak}
               isSpeaking={isSpeaking}
               speakingText={speakingText}
-              liveTypingUsers={liveTypingUsers}
+              liveTypingUsers={liveTypingUsers.map((item) => item.label)}
             />
 
             <InputBar {...composerProps} />
