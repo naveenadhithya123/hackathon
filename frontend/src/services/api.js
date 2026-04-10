@@ -120,9 +120,27 @@ export function generateQuiz(payload) {
   });
 }
 
+function buildAudioFilename(audioBlob) {
+  const mimeType = String(audioBlob?.type || "").toLowerCase();
+
+  if (mimeType.includes("mp4") || mimeType.includes("mpeg")) {
+    return "speech.m4a";
+  }
+
+  if (mimeType.includes("ogg")) {
+    return "speech.ogg";
+  }
+
+  if (mimeType.includes("wav")) {
+    return "speech.wav";
+  }
+
+  return "speech.webm";
+}
+
 export async function transcribeAudio(audioBlob) {
   const formData = new FormData();
-  formData.append("audio", audioBlob, "speech.webm");
+  formData.append("audio", audioBlob, buildAudioFilename(audioBlob));
 
   const response = await fetch(`${API_URL}/speech/transcribe`, {
     method: "POST",

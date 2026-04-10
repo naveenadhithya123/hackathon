@@ -498,12 +498,30 @@ ${sourceText.slice(0, 15000)}`,
 }
 
 // ── 7. SPEECH-TO-TEXT (Whisper via HF Router audio/transcriptions) ────────────
+function getAudioFilename(mimeType = "audio/webm") {
+  const normalized = String(mimeType).toLowerCase();
+
+  if (normalized.includes("mp4") || normalized.includes("mpeg")) {
+    return "speech.m4a";
+  }
+
+  if (normalized.includes("ogg")) {
+    return "speech.ogg";
+  }
+
+  if (normalized.includes("wav")) {
+    return "speech.wav";
+  }
+
+  return "speech.webm";
+}
+
 export async function transcribeAudio(buffer, mimeType = "audio/webm") {
   ensureHF();
 
   // HF Router supports the OpenAI audio transcription endpoint
   const blob = new Blob([buffer], { type: mimeType });
-  const file = new File([blob], "speech.webm", { type: mimeType });
+  const file = new File([blob], getAudioFilename(mimeType), { type: mimeType });
 
   const transcription = await hf.audio.transcriptions.create({
     model: MODEL_PRESETS.stt,
