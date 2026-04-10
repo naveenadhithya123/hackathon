@@ -30,6 +30,7 @@ export function useChat({ userId }) {
         id: message.id,
         role: message.role,
         content: message.content,
+        attachments: message.metadata?.attachments || [],
         sources: message.metadata?.sources || [],
         imageUrl: message.metadata?.imageUrl || "",
         fileUrl: message.metadata?.fileUrl || "",
@@ -44,16 +45,22 @@ export function useChat({ userId }) {
   async function sendMessage({
     content,
     documentIds = [],
+    attachments = [],
     imageUrl,
     imageContext,
     forceImageGeneration = false,
     optimisticAssistant,
     mode = "study",
+    userEmail = "",
   }) {
+    const primaryDocument = attachments.find((item) => item.type === "document");
     const optimisticUser = {
       id: `user-${Date.now()}`,
       role: "user",
       content,
+      attachments,
+      fileUrl: primaryDocument?.fileUrl || "",
+      fileName: primaryDocument?.name || "",
       imageUrl: imageUrl || "",
       imageContext: imageContext || "",
       status: "done",
@@ -70,8 +77,10 @@ export function useChat({ userId }) {
       const result = await sendChatMessage({
         chatId: currentChatId,
         userId,
+        userEmail,
         message: content,
         documentIds,
+        attachments,
         imageUrl,
         imageContext,
         forceImageGeneration,
@@ -85,6 +94,11 @@ export function useChat({ userId }) {
           .map((message) => ({
             role: message.role,
             content: message.content,
+            attachments: message.attachments || [],
+            imageUrl: message.imageUrl || "",
+            fileUrl: message.fileUrl || "",
+            fileName: message.fileName || "",
+            messageType: message.messageType || "chat",
           })),
       });
 
@@ -122,6 +136,7 @@ export function useChat({ userId }) {
               id: `assistant-error-${Date.now()}`,
               role: "assistant",
               content: error.message || "Something went wrong.",
+              attachments: [],
               messageType: optimisticAssistant?.messageType || "chat",
               status: "done",
             },
@@ -149,6 +164,10 @@ export function useChat({ userId }) {
     setMessages((previous) => [...previous, message]);
   }
 
+  function appendLocalMessage(message) {
+    setMessages((previous) => [...previous, message]);
+  }
+
   return {
     chats,
     currentChatId,
@@ -160,5 +179,6 @@ export function useChat({ userId }) {
     openChat,
     sendMessage,
     appendAssistantMessage,
+    appendLocalMessage,
   };
 }

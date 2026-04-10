@@ -1,0 +1,82 @@
+services:
+  - type: web
+    name: abc-ai-backend
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: CLIENT_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_IMAGE_MODEL
+        value: gpt-image-1
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_CHAT_MODEL
+        value: openai/gpt-oss-120b
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_CHAT_MODEL
+        value: gemini-2.0-flash-lite
+      - key: GEMINI_BACKUP_CHAT_MODEL
+        value: gemini-2.0-flash
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_CHAT_MODEL
+        value: zai-org/GLM-4.7:cerebras
+      - key: HF_VISION_MODEL
+        value: Qwen/Qwen2.5-VL-7B-Instruct
+      - key: HF_EMBEDDING_MODEL
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: HF_STT_MODEL
+        value: openai/whisper-large-v3-turbo
+      - key: HF_TTS_MODEL
+        value: hexgrad/Kokoro-82M
+      - key: HF_OCR_MODEL
+        value: microsoft/trocr-large-printed
+      - key: OCR_SPACE_API_KEY
+        value: helloworld
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: AI Hackathon
+
+  - type: static
+    name: abc-ai-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishPath: dist
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: VITE_APP_NAME
+        value: Edu AI Tutor
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_ENABLE_AUTH
+        value: "true"

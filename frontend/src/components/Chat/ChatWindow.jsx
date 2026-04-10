@@ -1,37 +1,59 @@
+import { useEffect, useRef } from "react";
 import MessageBubble from "./MessageBubble.jsx";
 
 const SUGGESTIONS = [
-  { emoji: "📚", text: "Explain Newton's laws of motion simply" },
-  { emoji: "💻", text: "Write a Python function to sort a list" },
-  { emoji: "🧠", text: "What is the difference between RAM and ROM?" },
-  { emoji: "📄", text: "Upload a PDF and ask me to summarize it" },
-  { emoji: "🎨", text: "Generate an image of the solar system" },
-  { emoji: "🎓", text: "Type /quiz after uploading a document" },
+  { emoji: "\u{1F4D8}", text: "Topic explanations, summaries, and structured exam support" },
+  { emoji: "\u{1F4BB}", text: "Complete code generation, debugging, and single-file web projects" },
+  { emoji: "\u{1F4C4}", text: "PDF summaries, note extraction, and document-grounded answers" },
+  { emoji: "\u{1F5BC}\uFE0F", text: "AI image generation, screenshot understanding, and edits" },
+  { emoji: "\u{1F9E0}", text: "Fast quiz generation from your uploaded materials" },
+  { emoji: "\u2709\uFE0F", text: "Direct email delivery with polished PDF or Word attachments" },
 ];
 
 export default function ChatWindow({ messages, onSpeakMessage, isSpeaking, speakingText }) {
   const showWelcome = messages.length <= 1 && messages[0]?.id === "welcome-message";
+  const scrollRef = useRef(null);
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    const marker = endRef.current;
+
+    if (!container || !marker) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      marker.scrollIntoView({ block: "end", behavior: "smooth" });
+    });
+  }, [messages]);
 
   return (
-    <section className="conversation-scroll">
+    <section className="conversation-scroll" ref={scrollRef}>
       <div className="conversation-inner">
         {showWelcome ? (
           <div className="welcome-screen">
-            <div className="welcome-icon">🎓</div>
-            <h2>How can I help you learn today?</h2>
-            <p>Ask me anything, attach images or PDFs, use voice input, or try these:</p>
+            <div className="welcome-icon welcome-logo-badge" aria-hidden="true">
+              <span className="welcome-cap">{"\u{1F393}"}</span>
+            </div>
+            <h2>Your all-in-one assistant for study, coding, documents, and media.</h2>
+            <p>
+              Upload files, create polished outputs, generate visuals, and work across
+              multiple AI modes from one clean workspace.
+            </p>
             <div className="suggestion-grid">
-              {SUGGESTIONS.map((s) => (
+              {SUGGESTIONS.map((suggestion) => (
                 <button
-                  key={s.text}
+                  key={suggestion.text}
                   className="suggestion-chip"
                   onClick={() => {
-                    // dispatch a custom event that App.jsx can listen to
-                    window.dispatchEvent(new CustomEvent("edu-suggestion", { detail: s.text }));
+                    window.dispatchEvent(
+                      new CustomEvent("edu-suggestion", { detail: suggestion.text }),
+                    );
                   }}
                 >
-                  <span className="suggestion-emoji">{s.emoji}</span>
-                  <span>{s.text}</span>
+                  <span className="suggestion-emoji">{suggestion.emoji}</span>
+                  <span>{suggestion.text}</span>
                 </button>
               ))}
             </div>
@@ -47,6 +69,7 @@ export default function ChatWindow({ messages, onSpeakMessage, isSpeaking, speak
             />
           ))
         )}
+        <div ref={endRef} aria-hidden="true" />
       </div>
     </section>
   );

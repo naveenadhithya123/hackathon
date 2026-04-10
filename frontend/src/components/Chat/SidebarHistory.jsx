@@ -15,7 +15,10 @@ export default function SidebarHistory({
             onClick={() => onSelectChat(chat)}
             title={chat.title}
           >
-            <strong>{chat.title}</strong>
+            <div className="history-item-topline">
+              <strong>{chat.title}</strong>
+              <span className="history-item-badge">{chat.messages?.length || 0}</span>
+            </div>
             <span>{new Date(chat.updated_at || Date.now()).toLocaleString([], {
               month: "short",
               day: "numeric",

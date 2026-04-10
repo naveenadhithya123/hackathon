@@ -42,6 +42,15 @@ export function getHistory(userId) {
   return request(`/chat/${userId}/history`);
 }
 
+export function buildDocumentDownloadUrl(fileUrl, filename = "download") {
+  const params = new URLSearchParams({
+    url: fileUrl || "",
+    filename,
+  });
+
+  return `${API_URL}/documents/download?${params.toString()}`;
+}
+
 export async function uploadDocumentFile(file, userId) {
   const formData = new FormData();
   formData.append("file", file);
@@ -49,17 +58,35 @@ export async function uploadDocumentFile(file, userId) {
     formData.append("userId", userId);
   }
 
-  const response = await fetch(`${API_URL}/documents/upload`, {
-    method: "POST",
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${API_URL}/documents/upload`, {
+      method: "POST",
+      body: formData,
+    });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Document upload failed.");
+    const raw = await response.text();
+    let data = {};
+
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { error: raw };
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || "Document upload failed.");
+    }
+
+    return data;
+  } catch (error) {
+    if (/Failed to fetch/i.test(String(error?.message || ""))) {
+      throw new Error("Could not reach the document upload service. Check that the backend is running and try again.");
+    }
+
+    throw error;
   }
-
-  return data;
 }
 
 export async function uploadImageFile(file) {
@@ -119,6 +146,13 @@ export function requestSpeech(text) {
 
 export function sendAnswerEmail(payload) {
   return request("/email/send", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resolveEmailIntent(payload) {
+  return request("/email/resolve-intent", {
     method: "POST",
     body: JSON.stringify(payload),
   });

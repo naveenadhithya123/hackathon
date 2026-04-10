@@ -15,6 +15,8 @@ import OpenAI from "openai";
 
 const HF_TOKEN = process.env.HF_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // ── HF Router client (OpenAI-compatible) ──────────────────────────────────────
 const hf = HF_TOKEN
@@ -29,9 +31,20 @@ const openai = OPENAI_API_KEY
   ? new OpenAI({ apiKey: OPENAI_API_KEY })
   : null;
 
+const groq = GROQ_API_KEY
+  ? new OpenAI({
+      baseURL: "https://api.groq.com/openai/v1",
+      apiKey: GROQ_API_KEY,
+    })
+  : null;
+
 // ── Model presets (all overridable via .env) ──────────────────────────────────
 export const MODEL_PRESETS = {
   chat:        process.env.HF_CHAT_MODEL      || "Qwen/Qwen3-235B-A22B:novita",
+  groqChat:    process.env.GROQ_CHAT_MODEL    || "openai/gpt-oss-120b",
+  openaiChat:  process.env.OPENAI_CHAT_MODEL  || "gpt-4o-mini",
+  geminiChat:  process.env.GEMINI_CHAT_MODEL  || "gemini-2.0-flash-lite",
+  geminiBackupChat: process.env.GEMINI_BACKUP_CHAT_MODEL || "gemini-2.0-flash",
   vision:      process.env.HF_VISION_MODEL    || "Qwen/Qwen2.5-VL-7B-Instruct",
   embeddings:  process.env.HF_EMBEDDING_MODEL || "sentence-transformers/all-MiniLM-L6-v2",
   stt:         process.env.HF_STT_MODEL       || "openai/whisper-large-v3-turbo",
@@ -43,6 +56,245 @@ function ensureHF() {
   if (!hf) throw new Error("HF_TOKEN is missing in backend/.env");
 }
 
+function isQuotaErrorMessage(message = "") {
+  return /402|monthly included credits|depleted your monthly included credits|purchase pre-paid credits|subscribe to pro|get 20x more included usage|billing hard limit|insufficient quota/i.test(
+    String(message),
+  );
+}
+
+async function requestGeminiChat({
+  model,
+  messages,
+  temperature = 0.3,
+  maxTokens = 1200,
+}) {
+  const systemInstruction = messages
+    .filter((item) => item?.role === "system" && item?.content)
+    .map((item) => item.content)
+    .join("\n\n");
+
+  const contents = messages
+    .filter((item) => item?.role !== "system" && item?.content)
+    .map((item) => ({
+      role: item.role === "assistant" ? "model" : "user",
+      parts: [{ text: String(item.content) }],
+    }));
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        system_instruction: systemInstruction
+          ? { parts: [{ text: systemInstruction }] }
+          : undefined,
+        contents,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+        },
+      }),
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message =
+      data?.error?.message ||
+      `${response.status} ${response.statusText || "Gemini request failed."}`;
+
+    throw new Error(message);
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part?.text || "")
+    .join("")
+    .trim();
+
+  return text || "";
+}
+
+async function requestGeminiVision({
+  model,
+  question,
+  imageUrl,
+  context = "",
+  maxTokens = 900,
+}) {
+  const remote = await fetch(imageUrl);
+  if (!remote.ok) {
+    throw new Error(`Gemini image fetch failed with ${remote.status}`);
+  }
+
+  const mimeType = remote.headers.get("content-type") || "image/jpeg";
+  const imageBuffer = Buffer.from(await remote.arrayBuffer());
+  const inlineData = imageBuffer.toString("base64");
+  const prompt = context
+    ? `Study context:\n${context}\n\nQuestion:\n${question}`
+    : question;
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: inlineData,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: maxTokens,
+        },
+      }),
+    },
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message =
+      data?.error?.message ||
+      `${response.status} ${response.statusText || "Gemini vision request failed."}`;
+
+    throw new Error(message);
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part?.text || "")
+    .join("")
+    .trim();
+
+  return text || "";
+}
+
+async function chatCompletionWithGemini({
+  messages,
+  temperature = 0.3,
+  maxTokens = 1200,
+}) {
+  if (!GEMINI_API_KEY) {
+    throw new Error("Gemini fallback is not configured correctly. Please update the API key.");
+  }
+
+  try {
+    return await requestGeminiChat({
+      model: MODEL_PRESETS.geminiChat,
+      messages,
+      temperature,
+      maxTokens,
+    });
+  } catch (error) {
+    const message = String(error?.message || "");
+
+    if (/api key not valid|invalid api key|permission denied|unauthenticated|401|403/i.test(message)) {
+      throw new Error("Gemini fallback is not configured correctly. Please update the API key.");
+    }
+
+    if (/quota|rate limit|resource has been exhausted|429/i.test(message)) {
+      try {
+        return await requestGeminiChat({
+          model: MODEL_PRESETS.geminiBackupChat,
+          messages,
+          temperature,
+          maxTokens,
+        });
+      } catch (backupError) {
+        const backupMessage = String(backupError?.message || "");
+        if (/quota|rate limit|resource has been exhausted|429/i.test(backupMessage)) {
+          throw new Error("Gemini fallback is busy or out of quota. Please wait a minute and try again.");
+        }
+        throw backupError;
+      }
+    }
+
+    throw error;
+  }
+}
+
+async function chatCompletionWithOpenAI({
+  messages,
+  temperature = 0.3,
+  maxTokens = 1200,
+}) {
+  if (!openai) {
+    return chatCompletionWithGemini({ messages, temperature, maxTokens });
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: MODEL_PRESETS.openaiChat,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    });
+
+    return completion.choices?.[0]?.message?.content?.trim() ?? "";
+  } catch (error) {
+    const message = String(error?.message || "");
+
+    if (/401|incorrect api key provided|invalid api key/i.test(message)) {
+      return chatCompletionWithGemini({ messages, temperature, maxTokens });
+    }
+
+    if (/429|rate limit|quota/i.test(message)) {
+      return chatCompletionWithGemini({ messages, temperature, maxTokens });
+    }
+
+    throw error;
+  }
+}
+
+async function chatCompletionWithGroq({
+  messages,
+  temperature = 0.3,
+  maxTokens = 1200,
+}) {
+  if (!groq) {
+    return chatCompletionWithGemini({ messages, temperature, maxTokens });
+  }
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: MODEL_PRESETS.groqChat,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    });
+
+    return completion.choices?.[0]?.message?.content?.trim() ?? "";
+  } catch (error) {
+    const message = String(error?.message || "");
+
+    if (/401|incorrect api key provided|invalid api key/i.test(message)) {
+      throw new Error("Groq fallback is not configured correctly. Please update the API key.");
+    }
+
+    if (/429|rate limit|quota|resource exhausted/i.test(message)) {
+      return chatCompletionWithGemini({ messages, temperature, maxTokens });
+    }
+
+    throw error;
+  }
+}
+
 // ── 1. CHAT COMPLETION ────────────────────────────────────────────────────────
 export async function chatCompletion({
   messages,
@@ -50,6 +302,10 @@ export async function chatCompletion({
   temperature = 0.3,
   maxTokens = 1200,
 }) {
+  if (!hf) {
+    return chatCompletionWithGroq({ messages, temperature, maxTokens });
+  }
+
   ensureHF();
   try {
     const completion = await hf.chat.completions.create({
@@ -66,8 +322,8 @@ export async function chatCompletion({
       throw new Error("The AI model is busy right now. Please try again in a few seconds.");
     }
 
-    if (/billing hard limit|insufficient quota/i.test(message)) {
-      throw new Error("The AI service quota has been reached. Please check the API billing or try again later.");
+    if (isQuotaErrorMessage(message)) {
+      return chatCompletionWithGroq({ messages, temperature, maxTokens });
     }
 
     throw error;
@@ -76,27 +332,73 @@ export async function chatCompletion({
 
 // ── 2. VISION COMPLETION ──────────────────────────────────────────────────────
 export async function visionCompletion({ question, imageUrl, context = "" }) {
-  ensureHF();
   const systemText = context
     ? `You are an educational visual tutor. Answer using the image and the study context below.\n\nStudy context:\n${context}`
     : "You are an educational visual tutor. Inspect the image carefully and answer the student.";
 
-  const completion = await hf.chat.completions.create({
-    model: MODEL_PRESETS.vision,
-    temperature: 0.2,
-    max_tokens: 900,
-    messages: [
-      { role: "system", content: systemText },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: question },
-          { type: "image_url", image_url: { url: imageUrl } },
+  if (hf) {
+    try {
+      const completion = await hf.chat.completions.create({
+        model: MODEL_PRESETS.vision,
+        temperature: 0.2,
+        max_tokens: 900,
+        messages: [
+          { role: "system", content: systemText },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: question },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
         ],
-      },
-    ],
-  });
-  return completion.choices?.[0]?.message?.content?.trim() ?? "";
+      });
+      return completion.choices?.[0]?.message?.content?.trim() ?? "";
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (!/not supported by any provider|quota|rate limit|402|429|vision/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  if (openai) {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: MODEL_PRESETS.openaiChat,
+        temperature: 0.2,
+        max_tokens: 900,
+        messages: [
+          { role: "system", content: systemText },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: question },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+      });
+      return completion.choices?.[0]?.message?.content?.trim() ?? "";
+    } catch (_error) {
+      // Fall through to Gemini.
+    }
+  }
+
+  if (GEMINI_API_KEY) {
+    try {
+      return await requestGeminiVision({
+        model: MODEL_PRESETS.geminiChat,
+        question,
+        imageUrl,
+        context,
+      });
+    } catch (_error) {
+      // Fall through to a friendly failure below.
+    }
+  }
+
+  throw new Error("That analysis model is unavailable right now. Please try a simpler text-based question or upload a clearer text image.");
 }
 
 // ── 3. IMAGE TEXT EXTRACTION (OCR-style via vision) ───────────────────────────
@@ -255,13 +557,17 @@ async function buildImageGenerationPrompt(prompt, conversationContext = "") {
 }
 
 async function buildEditedImagePrompt({ instruction, imageUrl }) {
-  const prompt = await visionCompletion({
-    question: `You are helping an image generation model edit a reference image.
+  try {
+    const prompt = await visionCompletion({
+      question: `You are helping an image generation model edit a reference image.
 User edit request: ${instruction}
 Return ONE detailed generation prompt only. Keep same subject/framing/composition unless explicitly changed. No explanation.`,
-    imageUrl,
-  });
-  return prompt.replace(/^["']|["']$/g, "").trim();
+      imageUrl,
+    });
+    return prompt.replace(/^["']|["']$/g, "").trim();
+  } catch (_error) {
+    return `Use the uploaded image as the main visual reference. Keep the same subject, framing, and overall composition unless the user clearly asks to change them. User request: ${instruction}`;
+  }
 }
 
 function enforceSceneAccuracy(prompt) {
@@ -364,6 +670,38 @@ function createPosterSvg(spec) {
 </svg>`;
 }
 
+async function fetchImageBuffer(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Image provider failed with ${response.status}`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function tryPollinationsVariants(prompt) {
+  const encoded = encodeURIComponent(`high quality, sharp focus, realistic: ${prompt}`);
+  const variants = [
+    `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=1024&height=1024&nologo=true&safe=true&enhance=true`,
+    `https://image.pollinations.ai/prompt/${encoded}?model=turbo&width=1024&height=1024&nologo=true&safe=true`,
+    `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&safe=true`,
+    `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=768&height=768&nologo=true&safe=true`,
+  ];
+
+  let lastError = null;
+
+  for (const url of variants) {
+    try {
+      const buffer = await fetchImageBuffer(url);
+      return { buffer, mimeType: "image/png", extension: "png" };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Pollinations image generation failed.");
+}
+
 export async function generateImageFromPrompt(prompt, options = {}) {
   const { referenceImageUrl, conversationContext = "" } = options;
 
@@ -401,16 +739,19 @@ export async function generateImageFromPrompt(prompt, options = {}) {
   }
 
   // Fallback → Pollinations (free, no key needed)
-  const encoded = encodeURIComponent(
-    `high quality, sharp focus, realistic: ${finalPrompt}`
-  );
-  const url = `https://image.pollinations.ai/prompt/${encoded}?model=flux&width=1024&height=1024&nologo=true&safe=true&enhance=true`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Pollinations failed with ${response.status}`);
-  return { buffer: Buffer.from(await response.arrayBuffer()), mimeType: "image/png", extension: "png" };
+  return tryPollinationsVariants(finalPrompt);
 }
 
 export function isImageGenerationPrompt(prompt = "") {
   const normalized = prompt.trim().toLowerCase();
-  return /\b(generate|create)\b\s+.*\b(image|picture|photo|illustration|art|logo|poster|diagram)\b/i.test(normalized);
+  return (
+    /\b(generate|create|make|draw|design)\b\s+.*\b(image|picture|photo|illustration|art|logo|poster|diagram)\b/i.test(
+      normalized,
+    ) ||
+    /\b(image|picture|photo|illustration|poster|diagram)\s+of\b/i.test(normalized) ||
+    /\b(show me|give me|need|want)\b\s+.*\b(image|picture|photo|illustration|art|logo|poster|diagram)\b/i.test(
+      normalized,
+    ) ||
+    /\b(draw|design)\b\s+.*\b(logo|poster|illustration|diagram)\b/i.test(normalized)
+  );
 }

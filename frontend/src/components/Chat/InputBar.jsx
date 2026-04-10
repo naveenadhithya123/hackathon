@@ -14,7 +14,7 @@ export default function InputBar({
   onMic,
   isBusy,
   hasUploadingAttachments = false,
-  placeholder = "Message AI Hackathon",
+  placeholder = "Message Nova Assistant",
 }) {
   const micLabel = isRecording ? "Stop recording" : "Start voice input";
 
@@ -99,19 +99,18 @@ export default function InputBar({
             type="button"
             onClick={onSend}
             disabled={disabled || isBusy || hasUploadingAttachments}
+            aria-label={isBusy || hasUploadingAttachments ? "Please wait" : "Send message"}
           >
-            {isBusy || hasUploadingAttachments ? "Wait" : "Send"}
+            {isBusy || hasUploadingAttachments ? (
+              "..."
+            ) : (
+              <svg viewBox="0 0 24 24" className="toolbar-icon send-icon" aria-hidden="true">
+                <path d="M5 12h13" />
+                <path d="m13 6 6 6-6 6" />
+              </svg>
+            )}
           </button>
         </div>
-      </div>
-
-      <div className="composer-hint">
-        {isRecording && transcript
-          ? `Listening: ${transcript}`
-          : uploadState.loading
-          ? `Uploading ${uploadState.kind || "file"}... You can keep typing while it uploads.`
-          : uploadState.message ||
-            "Use + for files, paste screenshots directly, /quiz for quiz generation, and /email you@example.com to send the latest answer."}
       </div>
     </div>
   );

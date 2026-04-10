@@ -141,3 +141,23 @@ VITE_ENABLE_AUTH=true
 | Text to Speech | `hexgrad/Kokoro-82M` |
 | Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
 | Image Generation | `gpt-image-1` (OpenAI) or Pollinations fallback |
+
+---
+
+## Render deployment
+
+This repo includes a `render.yaml` file for a 2-service Render setup:
+
+- `abc-ai-backend` as a Node web service
+- `abc-ai-frontend` as a static site
+
+High-level deploy flow:
+
+1. Push this repo to GitHub.
+2. In Render, click `New +` -> `Blueprint`.
+3. Connect the GitHub repo and select this repository.
+4. Render will read `render.yaml` and create both services.
+5. Add the required secret environment variables on the backend and frontend.
+6. Set `VITE_API_URL` on the frontend to your backend URL plus `/api`.
+7. Set `CLIENT_URL` on the backend to your frontend URL.
+8. Redeploy both services after saving the environment variables.

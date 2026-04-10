@@ -16,9 +16,38 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
+const allowedOrigins = [
+  ...new Set(
+    String(CLIENT_URL)
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .concat(["http://localhost:5173", "http://127.0.0.1:5173"]),
+  ),
+];
+
 app.use(
   cors({
-    origin: [CLIENT_URL, "http://localhost:5173", "http://127.0.0.1:5173"],
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      try {
+        if (
+          allowedOrigins.includes(origin) ||
+          /\.onrender\.com$/i.test(new URL(origin).hostname)
+        ) {
+          callback(null, true);
+          return;
+        }
+      } catch (_error) {
+        // Fall through to the rejection below for malformed origins.
+      }
+
+      callback(new Error("CORS origin not allowed."));
+    },
     credentials: true,
   }),
 );

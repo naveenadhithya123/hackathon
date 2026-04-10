@@ -8,6 +8,15 @@ function sanitizeFilenamePart(value = "") {
     .slice(0, 40) || "document";
 }
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function slugFromDate() {
   return new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
 }
@@ -64,14 +73,85 @@ export function hasLiteralContentRequest(prompt = "") {
 }
 
 function htmlToWordDocument(title, content) {
+  const lines = String(content || "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let index = 0;
+
+  const formatInline = (text = "") =>
+    escapeHtml(text)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`(.+?)`/g, "<code>$1</code>");
+
+  while (index < lines.length) {
+    const trimmed = lines[index].trim();
+
+    if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (/^#{1,3}\s+/.test(trimmed)) {
+      const level = Math.min(trimmed.match(/^#+/)[0].length, 3);
+      const text = trimmed.replace(/^#{1,3}\s+/, "");
+      const tag = level === 1 ? "h1" : level === 2 ? "h2" : "h3";
+      blocks.push(`<${tag}>${formatInline(text)}</${tag}>`);
+      index += 1;
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      const items = [];
+
+      while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^[-*]\s+/, ""));
+        index += 1;
+      }
+
+      blocks.push(`<ul>${items.map((item) => `<li>${formatInline(item)}</li>`).join("")}</ul>`);
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      const items = [];
+
+      while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^\d+\.\s+/, ""));
+        index += 1;
+      }
+
+      blocks.push(`<ol>${items.map((item) => `<li>${formatInline(item)}</li>`).join("")}</ol>`);
+      continue;
+    }
+
+    const paragraph = [];
+    while (index < lines.length && lines[index].trim()) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+
+    blocks.push(`<p>${formatInline(paragraph.join(" "))}</p>`);
+  }
+
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: "Segoe UI", Arial, sans-serif; line-height: 1.6; color: #1f2937; margin: 28px; }
+      h1, h2, h3 { color: #0f172a; margin: 18px 0 10px; }
+      h1 { font-size: 22px; }
+      h2 { font-size: 18px; }
+      h3 { font-size: 15px; }
+      p { margin: 0 0 12px; }
+      ul, ol { margin: 0 0 14px 22px; }
+      li { margin: 0 0 6px; }
+      code { font-family: Consolas, "Courier New", monospace; background: #f3f4f6; padding: 1px 4px; }
+      strong { font-weight: 700; }
+    </style>
   </head>
   <body>
-    <pre style="font-family:Segoe UI, Arial, sans-serif; white-space:pre-wrap; line-height:1.6;">${content}</pre>
+    ${blocks.join("\n") || `<p>${formatInline(content)}</p>`}
   </body>
 </html>`;
 }
@@ -83,7 +163,7 @@ export function inferDocumentFormat(prompt = "") {
     return "pdf";
   }
 
-  if (/\b(word|docx?|ms word)\b/.test(normalized)) {
+  if (/\b(word|docx?|dox|ms word)\b/.test(normalized)) {
     return "doc";
   }
 

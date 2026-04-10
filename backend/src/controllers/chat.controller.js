@@ -4,6 +4,8 @@ import {
   buildTutorSystemPrompt,
   extractTitleFromPrompt,
 } from "../utils/promptBuilder.js";
+import { buildChatMemory } from "../utils/chatMemory.js";
+import { resolveConversationMessage } from "../utils/conversationResolver.js";
 import {
   chatCompletion,
   generateImageFromPrompt,
@@ -34,11 +36,68 @@ function isDocumentPrompt(message = "") {
   );
 }
 
+function isDocumentFollowUpPrompt(message = "") {
+  const normalized = String(message).trim().toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  return /\b(this|that|those|it|above|previous|before|same)\b/.test(normalized) ||
+    /\b(answer|answers|questions|solve|solutions|from there|from that|from the pdf|from the document)\b/.test(normalized) ||
+    normalized.length <= 40;
+}
+
 function isCreatorPrompt(message = "") {
   const normalized = String(message).toLowerCase();
-  return /\b(create|generate|make|build)\b.*\b(pdf|doc|docx|word|text file|txt|worksheet|handout|notes|document|file)\b/i.test(
-    normalized,
-  ) || /\b(pdf|doc|docx|word|txt|text file|document|file)\b/i.test(normalized);
+
+  if (!normalized.trim()) {
+    return false;
+  }
+
+  const creatorAction = /\b(create|generate|make|build|write|draft|prepare)\b/i;
+  const creatorOutput =
+    /\b(pdf|doc|docx|dox|word|text file|txt|worksheet|handout|notes?|document|file|summary|outline|study guide|report)\b/i;
+  const exportAction =
+    /\b(download(able)?|export|attachment|attach|save as|save it|send as file|create file|generate file|make file|build file)\b/i;
+  const naturalRequestAction = /\b(need|want|provide|share|prepare)\b/i;
+  const naturalRequestOutput =
+    /\b(document|file|notes?|worksheet|handout|summary|outline|study guide|report)\b/i;
+
+  return (creatorAction.test(normalized) && creatorOutput.test(normalized)) ||
+    (exportAction.test(normalized) && creatorOutput.test(normalized)) ||
+    (naturalRequestAction.test(normalized) && naturalRequestOutput.test(normalized)) ||
+    (/\bgive me\b/i.test(normalized) && naturalRequestOutput.test(normalized)) ||
+    /\b(pdf|doc|docx|dox|word|txt|text file)\b/i.test(normalized);
+}
+
+function wantsExplicitGeneratedFile(message = "") {
+  const normalized = String(message).toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  return isCreatorPrompt(normalized) &&
+    (
+      /\b(pdf|doc|docx|word|txt|text file)\b/i.test(normalized) ||
+      /\bdox\b/i.test(normalized) ||
+      /\b(download(able)?|export|attachment|attach|send as file|save as file|create file|generate file|make file|build file)\b/i.test(normalized)
+    );
+}
+
+function wantsCompleteCodeResponse(message = "") {
+  const normalized = String(message).toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    /\b(complete|full|entire)\b.*\b(code|html|css|javascript|js|program|web ?page|website|app)\b/i.test(normalized) ||
+    /\b(one|single)\s+(html|js|javascript|css)\s+file\b/i.test(normalized) ||
+    /\bin\s+one\s+(html|js|javascript|css)\s+file\b/i.test(normalized)
+  );
 }
 
 function scoreChunk(content = "", query = "") {
@@ -123,8 +182,28 @@ function mapChatError(error) {
     return "The AI model is busy right now. Please try again in a few seconds.";
   }
 
-  if (/billing hard limit|insufficient quota/i.test(message)) {
-    return "The AI service quota has been reached. Please check the API billing or try again later.";
+  if (/402|monthly included credits|depleted your monthly included credits|purchase pre-paid credits|subscribe to pro|get 20x more included usage|billing hard limit|insufficient quota/i.test(message)) {
+    return "AI quota finished, please recharge.";
+  }
+
+  if (/401|incorrect api key provided|invalid api key/i.test(message)) {
+    return "OpenAI fallback is not configured correctly. Please update the API key.";
+  }
+
+  if (/OpenAI fallback is busy or out of quota/i.test(message)) {
+    return "OpenAI fallback is busy or out of quota. Please try another valid API key.";
+  }
+
+  if (/Groq fallback is not configured correctly/i.test(message)) {
+    return "Groq fallback is not configured correctly. Please update the API key.";
+  }
+
+  if (/Gemini fallback is not configured correctly/i.test(message)) {
+    return "Gemini fallback is not configured correctly. Please update the API key.";
+  }
+
+  if (/Gemini fallback is busy or out of quota/i.test(message)) {
+    return "Gemini fallback is busy or out of quota. Please wait a minute and try again.";
   }
 
   if (/not supported by any provider/i.test(message)) {
@@ -132,6 +211,149 @@ function mapChatError(error) {
   }
 
   return message || "Something went wrong while generating the answer.";
+}
+
+function isProviderFailureMessage(message = "") {
+  return /monthly included credits|billing hard limit|insufficient quota|incorrect api key|invalid api key|OpenAI fallback|Gemini fallback|too many requests|rate limit|resource has been exhausted|quota/i.test(
+    String(message),
+  );
+}
+
+function extractKnowledgeTopic(message = "") {
+  const normalized = String(message).trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const patterns = [
+    /^(?:what is|what are)\s+(?:an?\s+|the\s+)?(.+?)\??$/i,
+    /^(?:who is|who are)\s+(.+?)\??$/i,
+    /^(?:tell me about|explain)\s+(.+?)\??$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return normalized.split(/\s+/).slice(0, 6).join(" ").trim();
+}
+
+function formatPossibleNameFromEmail(email = "") {
+  const localPart = String(email).split("@")[0] || "";
+  const cleaned = localPart.replace(/[0-9._-]+/g, " ").trim();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildLocalFallbackAnswer(message = "", mode = "study", userEmail = "") {
+  const normalized = String(message).trim().toLowerCase();
+  const possibleName = formatPossibleNameFromEmail(userEmail);
+
+  if (isSimpleChatPrompt(normalized)) {
+    return buildSimpleChatReply(normalized);
+  }
+
+  if (/\b(do you know my name|what is my name|tell my name)\b/i.test(normalized)) {
+    if (possibleName) {
+      return `I can guess your name from the signed-in email as ${possibleName}. If you want, tell me the exact name you want me to use.`;
+    }
+
+    return "I do not know your exact name unless you tell me, but I can remember it within the conversation once you share it.";
+  }
+
+  if (/\bwho are you|what are you\b/i.test(normalized)) {
+    return mode === "coding"
+      ? "I'm Code AI. I help with programming, debugging, websites, apps, algorithms, and code explanations."
+      : "I'm AI Hackathon. I help with study questions, coding help, document work, quizzes, and basic explanations.";
+  }
+
+  if (/\bwhat can you do|how can you help\b/i.test(normalized)) {
+    return "I can help with study explanations, coding questions, website code, document summaries, quiz prep, and downloadable files. Right now I am using fallback mode, so simple answers work best.";
+  }
+
+  if (/\bwhat is a tree|what is tree\b/i.test(normalized)) {
+    return "A tree is a tall plant with a woody stem or trunk, branches, and leaves. Trees make food by photosynthesis, release oxygen, and provide shade, fruit, wood, and shelter for living things.";
+  }
+
+  if (/\bwhat is a computer|what is computer\b/i.test(normalized)) {
+    return "A computer is an electronic device that takes input, processes data according to instructions, and produces output. It is used for tasks such as calculation, communication, storage, and running software.";
+  }
+
+  if (/\bwhat is html\b/i.test(normalized)) {
+    return "HTML stands for HyperText Markup Language. It is used to structure the content of web pages, such as headings, paragraphs, images, links, and forms.";
+  }
+
+  if (/\bwhat is css\b/i.test(normalized)) {
+    return "CSS stands for Cascading Style Sheets. It is used to style web pages by controlling colors, spacing, layout, fonts, and responsiveness.";
+  }
+
+  if (/\bwhat is javascript\b/i.test(normalized)) {
+    return "JavaScript is a programming language used to make web pages interactive. It can update content, respond to clicks, validate forms, and build dynamic web apps.";
+  }
+
+  if (/\bhero of (bigil|the movie bigil)\b/i.test(normalized)) {
+    return "The hero of the movie Bigil is Vijay. He plays the lead role as Michael Rayappan, also called Bigil.";
+  }
+
+  if (/\bhero of (nanban|nunbam|namban)\b/i.test(normalized)) {
+    return "If you mean the Tamil movie Nanban, the lead hero is Vijay. He plays Panchavan Parivendhan, the remake version of Rancho.";
+  }
+
+  return "The AI providers are unavailable right now, but the app is still running. Try a simpler question like `what is HTML`, `what is a tree`, `who are you`, or switch to document/image features for the demo.";
+}
+
+async function fetchWikipediaFallback(message = "") {
+  const topic = extractKnowledgeTopic(message);
+
+  if (!topic) {
+    return "";
+  }
+
+  const searchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(topic)}&limit=1&namespace=0&format=json`;
+  const searchResponse = await fetch(searchUrl, {
+    headers: {
+      "User-Agent": "AI-Hackathon/1.0",
+    },
+  });
+
+  if (!searchResponse.ok) {
+    return "";
+  }
+
+  const searchData = await searchResponse.json().catch(() => []);
+  const title = searchData?.[1]?.[0];
+
+  if (!title) {
+    return "";
+  }
+
+  const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+  const summaryResponse = await fetch(summaryUrl, {
+    headers: {
+      "User-Agent": "AI-Hackathon/1.0",
+    },
+  });
+
+  if (!summaryResponse.ok) {
+    return "";
+  }
+
+  const summaryData = await summaryResponse.json().catch(() => ({}));
+  const extract = String(summaryData?.extract || "").trim();
+
+  return extract || "";
 }
 
 function buildImageContextPrompt(message = "", imageContext = "") {
@@ -144,14 +366,50 @@ function getLastCreatorUserPrompt(history = []) {
     .filter((item) => item?.role === "user" && item?.content)
     .map((item) => item.content);
 
-  return previousUserMessages.find((content) =>
-    /\b(create|generate|make|build)\b.*\b(pdf|doc|docx|word|text file|txt|worksheet|handout|notes|document|file)\b/i.test(
-      content,
-    ),
-  ) || "";
+  return previousUserMessages.find((content) => isCreatorPrompt(content)) || "";
+}
+
+function isCreatorFollowUpPrompt(message = "", history = []) {
+  const normalized = String(message || "").trim();
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (isSimpleChatPrompt(normalized) || isCreatorPrompt(normalized) || isImageGenerationPrompt(normalized)) {
+    return false;
+  }
+
+  return Boolean(getLastCreatorUserPrompt(history));
+}
+
+function buildAutomaticDocumentPrompt(mode = "study") {
+  if (mode === "coding") {
+    return "Read the uploaded file and directly solve or explain the coding content. Start with the main answer first, then provide clean code blocks and a short explanation.";
+  }
+
+  if (mode === "documents") {
+    return "Read the uploaded document and immediately give a concise summary, key points, important terms, and likely exam focus without asking follow-up questions first.";
+  }
+
+  return "Read the uploaded document and immediately explain what it contains in a clear student-friendly way. Start with a short overview, then key points, important ideas, and next things to study. Do not ask the user to paste the text.";
+}
+
+function buildDocumentAwarePrompt(message = "", mode = "study") {
+  if (!message?.trim()) {
+    return buildAutomaticDocumentPrompt(mode);
+  }
+
+  return `${message}
+
+The file is already uploaded in this chat. Use the uploaded document directly and answer from it. Do not ask the user to re-upload the PDF, paste the questions, or repeat the document text unless the document context is actually empty.`;
 }
 
 export async function sendMessage(req, res) {
+  let fallbackRequestMessage = "";
+  let fallbackMode = "study";
+  let fallbackUserEmail = "";
+
   try {
     const {
       chatId,
@@ -159,34 +417,81 @@ export async function sendMessage(req, res) {
       message,
       history = [],
       documentIds = [],
+      attachments = [],
       imageUrl,
       imageContext = "",
       forceImageGeneration = false,
       mode = "study",
+      userEmail = "",
     } = req.body;
 
-    if (!message && !imageUrl) {
-      return res.status(400).json({ error: "message or imageUrl is required." });
+    fallbackRequestMessage = message || "";
+    fallbackMode = mode;
+    fallbackUserEmail = userEmail || "";
+
+    if (!message && !imageUrl && !documentIds.length) {
+      return res.status(400).json({ error: "message, imageUrl, or documentIds is required." });
     }
 
     const activeChatId = chatId ?? uuid();
     let contextChunks = [];
     let retrievedContext = "";
+    const resolvedConversation = await resolveConversationMessage({
+      message: message || "",
+      history,
+      mode,
+    });
+    const resolvedUserMessage = resolvedConversation.normalizedMessage || message || "";
+    const effectiveMessage = documentIds.length
+      ? buildDocumentAwarePrompt(resolvedUserMessage, mode)
+      : resolvedUserMessage || "";
+    const chatMemory = buildChatMemory({
+      history,
+      userMessage: resolvedUserMessage || "",
+      documentIds,
+      attachments,
+      mode,
+    });
+    const retrievalQuery =
+      resolvedUserMessage && chatMemory.isFollowUp && chatMemory.recentRelevantMessages.length
+        ? `${resolvedUserMessage}\n${chatMemory.recentRelevantMessages.join("\n")}`
+        : effectiveMessage;
+
+    const previousCreatorPrompt = getLastCreatorUserPrompt(history);
+    const shouldTreatAsCreatorFollowUp =
+      mode === "creator" &&
+      Boolean(resolvedUserMessage) &&
+      Boolean(previousCreatorPrompt) &&
+      isCreatorFollowUpPrompt(resolvedUserMessage, history);
 
     const wantsGeneratedImage =
       Boolean(forceImageGeneration) ||
-      (typeof message === "string" && isImageGenerationPrompt(message));
+      (typeof effectiveMessage === "string" && isImageGenerationPrompt(effectiveMessage));
+    const shouldGenerateDocument =
+      !wantsGeneratedImage &&
+      !imageUrl &&
+      Boolean(resolvedUserMessage) &&
+      (
+        mode === "creator"
+          ? isCreatorPrompt(resolvedUserMessage) || shouldTreatAsCreatorFollowUp
+          : wantsExplicitGeneratedFile(resolvedUserMessage)
+      );
 
-    if (message && documentIds.length > 0 && userId) {
+    if (documentIds.length > 0 && userId) {
       const chunks = await listDocumentChunks(userId, documentIds, 120);
-      contextChunks = chunks
-        .map((chunk) => ({
-          ...chunk,
-          similarity: scoreChunk(chunk.content, message),
-        }))
-        .filter((chunk) => chunk.similarity > 0)
-        .sort((left, right) => right.similarity - left.similarity)
-        .slice(0, 6);
+      contextChunks = resolvedUserMessage && !isDocumentFollowUpPrompt(resolvedUserMessage)
+        ? chunks
+            .map((chunk) => ({
+              ...chunk,
+              similarity: scoreChunk(chunk.content, retrievalQuery),
+            }))
+            .filter((chunk) => chunk.similarity > 0)
+            .sort((left, right) => right.similarity - left.similarity)
+            .slice(0, 6)
+        : chunks.slice(0, 12).map((chunk, index) => ({
+            ...chunk,
+            similarity: Math.max(1, 12 - index),
+          }));
 
       retrievedContext = contextChunks
         .map(
@@ -213,26 +518,41 @@ export async function sendMessage(req, res) {
       }
     }
 
+    const shouldPrioritizeLongCode =
+      mode === "coding" ||
+      wantsCompleteCodeResponse(resolvedUserMessage) ||
+      (isCodingPrompt(resolvedUserMessage) && /\b(code|html|css|javascript|js|react|node|express|python|java)\b/i.test(resolvedUserMessage));
     const systemPrompt = buildTutorSystemPrompt(mode);
+    const responseFocusedMessage = shouldPrioritizeLongCode
+      ? `${effectiveMessage}
+
+If you provide code, return the COMPLETE final code with no missing closing tags, braces, functions, or sections.
+Do not stop in the middle of a code block.
+Prefer one complete working solution over a partial solution with explanation first.`
+      : effectiveMessage;
     const messages = buildConversationMessages({
       systemPrompt,
       history,
-      userMessage: message,
+      userMessage: responseFocusedMessage,
       retrievedContext,
+      chatMemory: chatMemory.summaryText,
     });
 
     const modeRefusal =
-      mode === "coding" && message && !isCodingPrompt(message)
+      mode === "coding" && resolvedUserMessage && !isCodingPrompt(resolvedUserMessage)
         ? buildModeRefusal("coding")
         : mode === "images" && !wantsGeneratedImage
           ? buildModeRefusal("images")
           : mode === "documents" &&
-              message &&
+              resolvedUserMessage &&
               !documentIds.length &&
               !imageUrl &&
-              !isDocumentPrompt(message)
+              !isDocumentPrompt(resolvedUserMessage)
             ? buildModeRefusal("documents")
-            : mode === "creator" && message && !isCreatorPrompt(message)
+            : mode === "creator" &&
+                resolvedUserMessage &&
+                !isCreatorPrompt(resolvedUserMessage) &&
+                !shouldTreatAsCreatorFollowUp
               ? buildModeRefusal("creator")
               : "";
 
@@ -246,11 +566,12 @@ export async function sendMessage(req, res) {
       answer = modeRefusal;
     } else if (!wantsGeneratedImage && !imageUrl && isSimpleChatPrompt(message)) {
       answer = buildSimpleChatReply(message);
-    } else if (mode === "creator") {
-      const previousCreatorPrompt = getLastCreatorUserPrompt(history);
-      const creatorPrompt = previousCreatorPrompt
-        ? `${previousCreatorPrompt}\n\nFollow-up correction: ${message}`
-        : message;
+    } else if (shouldGenerateDocument) {
+      const creatorPromptBase = resolvedUserMessage || message || "";
+      const creatorPrompt =
+        previousCreatorPrompt && previousCreatorPrompt !== creatorPromptBase
+          ? `${previousCreatorPrompt}\n\nFollow-up correction: ${creatorPromptBase}`
+          : creatorPromptBase;
 
       let generatedContent = "";
 
@@ -286,7 +607,10 @@ If the user asks for one word or one short sentence only, output exactly that co
       generatedFileUrl = uploadedFile.secureUrl;
       generatedFileName = generatedDocument.filename;
       messageType = "generated_document";
-      answer = `Your file is ready. I created ${generatedDocument.filename} for you.`;
+      answer =
+        mode === "creator"
+          ? `Your file is ready. I created ${generatedDocument.filename} for you.`
+          : `Your file is ready. I created ${generatedDocument.filename} based on your request.`;
     } else if (wantsGeneratedImage) {
       const conversationContext = buildImageConversationContext(history);
       const generatedAsset = await generateImageFromPrompt(message, {
@@ -333,25 +657,29 @@ If the user asks for one word or one short sentence only, output exactly that co
           "I can see the uploaded image is attached, but advanced visual analysis is limited right now. If the image contains text, try uploading a clearer version or tell me exactly what you want me to explain.";
       }
     } else {
-      answer = await chatCompletion({ messages });
+      answer = await chatCompletion({
+        messages,
+        maxTokens: shouldPrioritizeLongCode ? 2600 : 1200,
+      });
     }
 
     if (userId) {
       await createChat({
         id: activeChatId,
         user_id: userId,
-        title: extractTitleFromPrompt(message || "New chat"),
+        title: extractTitleFromPrompt(message || attachments?.[0]?.name || "New chat"),
       });
 
-      if (message) {
+      if (message || documentIds.length || imageUrl) {
         await saveMessage({
           chat_id: activeChatId,
           role: "user",
-          content: message,
+          content: message || "",
           metadata: {
             imageUrl: imageUrl ?? null,
             imageContext: imageContext || null,
             documentIds,
+            attachments,
             mode,
           },
         });
@@ -390,6 +718,32 @@ If the user asks for one word or one short sentence only, output exactly that co
       })),
     });
   } catch (error) {
+    const rawMessage = String(error?.message || "");
+
+    if (isProviderFailureMessage(rawMessage) && fallbackRequestMessage) {
+      let fallbackAnswer = "";
+
+      if (fallbackMode !== "coding" && fallbackMode !== "creator" && fallbackMode !== "images") {
+        try {
+          fallbackAnswer = await fetchWikipediaFallback(fallbackRequestMessage);
+        } catch (_fallbackError) {
+          fallbackAnswer = "";
+        }
+      }
+
+      fallbackAnswer ||= buildLocalFallbackAnswer(fallbackRequestMessage, fallbackMode, fallbackUserEmail);
+
+      return res.json({
+        chatId: req.body.chatId ?? uuid(),
+        answer: fallbackAnswer,
+        generatedImageUrl: null,
+        generatedFileUrl: null,
+        generatedFileName: null,
+        messageType: "chat",
+        sources: [],
+      });
+    }
+
     const friendlyError = mapChatError(error);
     const statusCode = /busy right now|quota has been reached/i.test(friendlyError) ? 503 : 500;
     return res.status(statusCode).json({ error: friendlyError });

@@ -8,8 +8,11 @@ Rules:
 - Keep emoji use tasteful and light, never in every line.
 - Prefer simple formatting over raw markdown tables.
 - Never use markdown tables unless the user explicitly asks for a table.
+- For math or set notation, prefer plain Unicode symbols like ∈, ∉, ⊂, ℕ, ℤ instead of LaTeX such as \in or \mathbb{N}.
 - Use real-life examples whenever they help.
 - If document context is provided, use it before general knowledge.
+- If document context is provided, treat the uploaded file as the primary source of truth and answer from it directly.
+- Do not ask the user to upload the file again, paste the PDF text again, or restate the questions if enough document context is already available.
 - Keep the tone encouraging and precise.
 - Do not volunteer generic model limitations, training cutoff dates, browsing disclaimers, or platform restrictions unless the user directly asks about them.
 - Answer as a capable modern assistant, not as a restricted demo bot.
@@ -23,6 +26,9 @@ ${sharedRules}
 - You only help with coding, programming, debugging, algorithms, web development, app development, and software concepts.
 - If the user asks for anything outside coding, politely say you are Code AI and can only help with code-related work.
 - When the user asks for code, provide working code in fenced code blocks.
+- If the user asks for a complete project or a single-file website, return the full final code with no missing sections, no ellipses, and no unfinished blocks.
+- If HTML, CSS, and JavaScript are requested in one file, provide one complete HTML file that already includes the CSS and JavaScript.
+- Always close every tag, bracket, function, object, and event handler before ending the response.
 - Keep explanations structured with headings like Overview, Code, How It Works, Next Step when useful.
 - If multiple files are needed, show a clean file structure first.
     `.trim();
@@ -80,17 +86,23 @@ export function buildConversationMessages({
   history = [],
   userMessage,
   retrievedContext = "",
+  chatMemory = "",
 }) {
   const safeHistory = history
-    .filter((item) => item?.role && item?.content)
+    .filter((item) => item?.role && (item?.content || item?.attachments?.length || item?.fileName))
     .slice(-8)
     .map((item) => ({
       role: item.role,
-      content: item.content,
+      content: item.content || "",
     }));
 
-  const userContent = retrievedContext
-    ? `Use this retrieved study context when relevant:\n${retrievedContext}\n\nStudent question:\n${userMessage}`
+  const contextParts = [
+    chatMemory ? `Chat memory and follow-up state:\n${chatMemory}` : "",
+    retrievedContext ? `Use this retrieved study context when relevant:\n${retrievedContext}` : "",
+  ].filter(Boolean);
+
+  const userContent = contextParts.length
+    ? `${contextParts.join("\n\n")}\n\nStudent question:\n${userMessage}`
     : userMessage;
 
   return [
