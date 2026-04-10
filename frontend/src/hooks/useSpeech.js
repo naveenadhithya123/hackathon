@@ -111,12 +111,11 @@ export function useSpeech() {
   }
 
   async function startRecognitionRecording(SpeechRecognition) {
-    await beginAudioMeter();
-
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
       let finalText = "";
@@ -130,11 +129,15 @@ export function useSpeech() {
     recognition.onerror = () => {
       setIsRecording(false);
       stopAudioMeter();
+      recognitionRef.current = null;
+      recordingModeRef.current = "idle";
     };
 
     recognition.onend = () => {
       setIsRecording(false);
       stopAudioMeter();
+      recognitionRef.current = null;
+      recordingModeRef.current = "idle";
     };
 
     recognitionRef.current = recognition;
@@ -189,36 +192,40 @@ export function useSpeech() {
 
     setTranscript("");
     transcriptRef.current = "";
-    const prefersRecorderFallback =
-      /android|iphone|ipad|ipod/i.test(navigator.userAgent) || !SpeechRecognition;
 
-    if (prefersRecorderFallback) {
+    if (SpeechRecognition) {
       try {
-        await startRecorderRecording();
+        await startRecognitionRecording(SpeechRecognition);
         return;
-      } catch (recorderError) {
-        if (SpeechRecognition) {
-          await startRecognitionRecording(SpeechRecognition);
-          return;
-        }
-
-        throw recorderError;
+      } catch (_recognitionError) {
+        // Fall through to recorder transcription when browser recognition is unavailable.
       }
     }
 
-    await startRecognitionRecording(SpeechRecognition);
+    if (window.MediaRecorder || navigator.mediaDevices?.getUserMedia) {
+      await startRecorderRecording();
+      return;
+    }
+
+    throw new Error("Voice input is not supported in this browser.");
   }
 
   async function stopRecording() {
     if (recordingModeRef.current === "recorder" && recorderRef.current) {
       const recorder = recorderRef.current;
 
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         recorder.onstop = async () => {
           setIsRecording(false);
           stopAudioMeter();
           recorderRef.current = null;
           recordingModeRef.current = "idle";
+
+          if (!chunksRef.current.length) {
+            chunksRef.current = [];
+            reject(new Error("No audio was captured. Please try again."));
+            return;
+          }
 
           const blob = new Blob(chunksRef.current, {
             type: recorder.mimeType || "audio/webm",
@@ -230,8 +237,12 @@ export function useSpeech() {
             transcriptRef.current = String(result.text || "").trim();
             setTranscript(transcriptRef.current);
             resolve(transcriptRef.current);
-          } catch {
-            resolve(transcriptRef.current.trim());
+          } catch (error) {
+            reject(
+              error instanceof Error
+                ? error
+                : new Error("Voice transcription failed on this phone."),
+            );
           }
         };
 
