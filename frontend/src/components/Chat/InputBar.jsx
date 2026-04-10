@@ -14,7 +14,7 @@ export default function InputBar({
   onMic,
   isBusy,
   hasUploadingAttachments = false,
-  placeholder = "Message Nova Assistant",
+  placeholder = "Message ABC Assistant",
 }) {
   const micLabel = isRecording ? "Stop recording" : "Start voice input";
 

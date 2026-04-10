@@ -206,6 +206,65 @@ function explicitlyRequestsEmailDelivery(text = "") {
   return /\b(send|mail|email|resend|forward)\b/i.test(normalized);
 }
 
+function isExportStatusMessage(message = {}) {
+  if (message?.role !== "assistant") {
+    return false;
+  }
+
+  const content = String(message.content || "").trim().toLowerCase();
+  if (!content) {
+    return false;
+  }
+
+  return /^i have sent it to .+ in (pdf|word) format\.?$/.test(content) ||
+    /i could not send the email right now/.test(content) ||
+    /send me the email address, and i'll send the latest answer as an attachment/.test(content);
+}
+
+function extractConversationContext(messages = []) {
+  let question = "";
+  let answer = "";
+
+  for (const message of messages || []) {
+    const content = String(message?.content || "").trim();
+
+    if (!content || message?.status === "pending" || isExportStatusMessage(message)) {
+      continue;
+    }
+
+    if (message.role === "user") {
+      question = content;
+    }
+
+    if (message.role === "assistant") {
+      answer = content;
+    }
+  }
+
+  return { question, answer };
+}
+
+function sortChatMessages(messages = []) {
+  return [...(messages || [])].sort((left, right) => {
+    const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightTime = right?.created_at ? new Date(right.created_at).getTime() : 0;
+
+    if (leftTime && rightTime && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return 0;
+  });
+}
+
+function buildEmailMessagesPayload(messages = []) {
+  return (messages || []).map((message) => ({
+    role: message.role,
+    content: message.content,
+    status: message.status || "done",
+  }));
+}
+
 function createAttachmentPayload(items = []) {
   return items.map((item) => ({
     id: item.id,
@@ -362,6 +421,7 @@ function buildEmailPayloadFromIntent(intent, fallback) {
     question: fallback.question,
     subject: format === "doc" ? "AI Tutor Answer DOC" : "AI Tutor Answer PDF",
     attachments: fallback.attachments || [],
+    messages: fallback.messages || [],
   };
 }
 
@@ -440,6 +500,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const root = document.documentElement;
+
+    const updateViewportMetrics = () => {
+      const viewport = window.visualViewport;
+      const layoutHeight = window.innerHeight;
+      const appHeight = Math.min(layoutHeight, viewport?.height || layoutHeight);
+      const viewportTop = viewport?.offsetTop || 0;
+      const viewportBottomOffset = Math.max(
+        0,
+        layoutHeight - (appHeight + viewportTop),
+      );
+      root.style.setProperty("--app-height", `${Math.round(appHeight)}px`);
+      root.style.setProperty("--viewport-bottom-offset", `${Math.round(viewportBottomOffset)}px`);
+    };
+
+    updateViewportMetrics();
+
+    window.addEventListener("resize", updateViewportMetrics);
+    window.addEventListener("orientationchange", updateViewportMetrics);
+    window.visualViewport?.addEventListener("resize", updateViewportMetrics);
+    window.visualViewport?.addEventListener("scroll", updateViewportMetrics);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportMetrics);
+      window.removeEventListener("orientationchange", updateViewportMetrics);
+      window.visualViewport?.removeEventListener("resize", updateViewportMetrics);
+      window.visualViewport?.removeEventListener("scroll", updateViewportMetrics);
+    };
+  }, []);
+
+  useEffect(() => {
     if (userId) {
       loadHistory();
     }
@@ -472,12 +563,23 @@ export default function App() {
     () => galleryItems.filter((item) => item.kind === galleryTab),
     [galleryItems, galleryTab],
   );
+  const latestConversationContext = useMemo(
+    () => extractConversationContext(messages),
+    [messages],
+  );
+  const emailMessageContext = useMemo(
+    () => buildEmailMessagesPayload(messages),
+    [messages],
+  );
+  const latestQuestion = latestConversationContext.question || lastQuestion;
+  const latestAnswer = latestConversationContext.answer || lastAssistantAnswer;
 
   function handleNewChat() {
     startNewChat();
     setPendingAttachments([]);
     setActiveDocumentIds([]);
     setComposerValue("");
+    setLastQuestion("");
     setPendingEmailRequest(null);
     setLastEmailTarget("");
     setSidebarView("chats");
@@ -649,9 +751,10 @@ export default function App() {
     const followUpEmailFormat = inferFollowUpEmailFormat(trimmed);
     const emailFallback = {
       to: lastEmailTarget || userEmail || "",
-      answer: pendingEmailRequest?.answer || lastAssistantAnswer || "No previous answer was available.",
-      question: pendingEmailRequest?.question || lastQuestion,
+      answer: pendingEmailRequest?.answer || latestAnswer || "No previous answer was available.",
+      question: pendingEmailRequest?.question || latestQuestion,
       attachments: availableEmailAttachments,
+      messages: pendingEmailRequest?.messages || emailMessageContext,
     };
     const resolvedEmailIntent =
       !/^\/email\s+/i.test(trimmed) &&
@@ -661,8 +764,8 @@ export default function App() {
             message: trimmed,
             fallbackEmail: userEmail || "",
             lastEmailTarget,
-            lastQuestion,
-            lastAssistantAnswer,
+            lastQuestion: latestQuestion,
+            lastAssistantAnswer: latestAnswer,
             pendingEmailRequest,
           }).catch(() => ({ isEmailIntent: false }))
         : { isEmailIntent: false };
@@ -672,10 +775,11 @@ export default function App() {
             to: extractEmailAddress(trimmed),
             attachPdf: pendingEmailRequest?.attachPdf ?? true,
             attachmentFormat: pendingEmailRequest?.attachmentFormat || "pdf",
-            answer: pendingEmailRequest?.answer || lastAssistantAnswer || "No previous answer was available.",
-            question: pendingEmailRequest?.question || lastQuestion,
+            answer: pendingEmailRequest?.answer || latestAnswer || "No previous answer was available.",
+            question: pendingEmailRequest?.question || latestQuestion,
             subject: pendingEmailRequest?.subject || "AI Tutor Answer PDF",
             attachments: availableEmailAttachments,
+            messages: pendingEmailRequest?.messages || emailMessageContext,
           }
         : null;
     const pendingRecipientIntent =
@@ -695,18 +799,19 @@ export default function App() {
             to: match[1],
             attachPdf: !/\b(word|doc|docx)\b/i.test(match[2] || ""),
             attachmentFormat: /\b(word|doc|docx)\b/i.test(match[2] || "") ? "doc" : "pdf",
-            answer: lastAssistantAnswer || "No previous answer was available.",
-            question: lastQuestion,
+            answer: latestAnswer || "No previous answer was available.",
+            question: latestQuestion,
             subject: /\b(word|doc|docx)\b/i.test(match[2] || "")
               ? "AI Tutor Answer DOC"
               : "AI Tutor Answer PDF",
             attachments: availableEmailAttachments,
+            messages: emailMessageContext,
           };
         })()
       : (() => {
-          const parsed = parseEmailIntent(trimmed, lastAssistantAnswer, lastQuestion, userEmail);
+          const parsed = parseEmailIntent(trimmed, latestAnswer, latestQuestion, userEmail);
           if (parsed) {
-            return { ...parsed, attachments: availableEmailAttachments };
+            return { ...parsed, attachments: availableEmailAttachments, messages: emailMessageContext };
           }
 
           if (resolvedEmailIntent?.isEmailIntent) {
@@ -849,10 +954,11 @@ export default function App() {
           to: lastEmailTarget,
           attachPdf: followUpEmailFormat !== "doc",
           attachmentFormat: followUpEmailFormat,
-          answer: lastAssistantAnswer || "No previous answer was available.",
-          question: lastQuestion,
+          answer: latestAnswer || "No previous answer was available.",
+          question: latestQuestion,
           subject: followUpEmailFormat === "doc" ? "AI Tutor Answer DOC" : "AI Tutor Answer PDF",
           attachments: availableEmailAttachments,
+          messages: emailMessageContext,
         });
         appendAssistantMessage({
           id: `assistant-email-followup-${Date.now()}`,
@@ -887,10 +993,11 @@ export default function App() {
             to: userEmail,
             attachPdf: !wantsWordFile,
             attachmentFormat: wantsWordFile ? "doc" : "pdf",
-            answer: lastAssistantAnswer || "No previous answer was available.",
-            question: lastQuestion,
+            answer: latestAnswer || "No previous answer was available.",
+            question: latestQuestion,
             subject: wantsWordFile ? "AI Tutor Answer DOC" : "AI Tutor Answer PDF",
             attachments: availableEmailAttachments,
+            messages: emailMessageContext,
           });
           setLastEmailTarget(userEmail);
           appendAssistantMessage({
@@ -919,9 +1026,10 @@ export default function App() {
       setPendingEmailRequest({
         attachPdf: !wantsWordFile,
         attachmentFormat: wantsWordFile ? "doc" : "pdf",
-        answer: lastAssistantAnswer || "No previous answer was available.",
-        question: lastQuestion,
+        answer: latestAnswer || "No previous answer was available.",
+        question: latestQuestion,
         subject: wantsWordFile ? "AI Tutor Answer DOC" : "AI Tutor Answer PDF",
+        messages: emailMessageContext,
       });
       appendAssistantMessage({
         id: `assistant-email-prompt-${Date.now()}`,
@@ -964,7 +1072,15 @@ export default function App() {
 
   function handleOpenChat(chat) {
     openChat(chat);
+    const chatContext = extractConversationContext(
+      sortChatMessages(chat.messages || []).map((message) => ({
+        role: message.role,
+        content: message.content,
+        status: "done",
+      })),
+    );
     setPendingAttachments([]);
+    setLastQuestion(chatContext.question || "");
     const linkedDocumentIds = [
       ...new Set(
         (chat.messages || [])
@@ -1020,6 +1136,26 @@ export default function App() {
       </div>
     );
   }
+
+  const composerProps = {
+    value: composerValue,
+    onChange: setComposerValue,
+    onSend: handleSend,
+    onPaste: handlePaste,
+    disabled: isLoading,
+    isRecording,
+    audioLevel,
+    transcript,
+    uploadState,
+    attachments: pendingAttachments,
+    onRemoveAttachment: removeAttachment,
+    onOpenFilePicker: () => fileInputRef.current?.click(),
+    onMic: handleMic,
+    isBusy: isLoading || isProcessingAction,
+    hasUploadingAttachments:
+      isUploadingAttachment || pendingAttachments.some((item) => item.status === "uploading"),
+    placeholder: MODE_PLACEHOLDERS[activeMode],
+  };
 
   return (
     <div className="chatgpt-shell">
@@ -1117,7 +1253,7 @@ export default function App() {
 
       <main className="main-stage">
         <header className="topbar">
-          <div>
+          <div className="topbar-brand">
             <button
               className="icon-button mobile-nav-button"
               onClick={() => setMobileSidebarOpen(true)}
@@ -1177,24 +1313,7 @@ export default function App() {
               speakingText={speakingText}
             />
 
-            <InputBar
-              value={composerValue}
-              onChange={setComposerValue}
-              onSend={handleSend}
-              onPaste={handlePaste}
-              disabled={isLoading}
-              isRecording={isRecording}
-              audioLevel={audioLevel}
-              transcript={transcript}
-              uploadState={uploadState}
-              attachments={pendingAttachments}
-              onRemoveAttachment={removeAttachment}
-              onOpenFilePicker={() => fileInputRef.current?.click()}
-              onMic={handleMic}
-              isBusy={isLoading || isProcessingAction}
-              hasUploadingAttachments={isUploadingAttachment || pendingAttachments.some((item) => item.status === "uploading")}
-              placeholder={MODE_PLACEHOLDERS[activeMode]}
-            />
+            <InputBar {...composerProps} />
           </>
         )}
 

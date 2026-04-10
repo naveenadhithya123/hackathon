@@ -86,6 +86,51 @@ function buildWordDocument({ title = "AI Tutor Answer", question = "", answer = 
   return Buffer.from(body, "utf8");
 }
 
+function isExportStatusMessage(content = "") {
+  const normalized = String(content || "").trim().toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  return /^i have sent it to .+ in (pdf|word) format\.?$/.test(normalized) ||
+    /i could not send the email right now/.test(normalized) ||
+    /send me the email address, and i'll send the latest answer as an attachment/.test(normalized);
+}
+
+function extractConversationContext(messages = []) {
+  let question = "";
+  let answer = "";
+
+  for (const message of messages || []) {
+    const content = String(message?.content || "").trim();
+
+    if (!content || message?.status === "pending" || isExportStatusMessage(content)) {
+      continue;
+    }
+
+    if (message.role === "user") {
+      question = content;
+    }
+
+    if (message.role === "assistant") {
+      answer = content;
+    }
+  }
+
+  return { question, answer };
+}
+
+function isMissingAnswer(value = "") {
+  const normalized = String(value || "").trim();
+  return !normalized || /^no previous answer was available\.?$/i.test(normalized);
+}
+
+function isGenericQuestion(value = "") {
+  const normalized = String(value || "").trim();
+  return !normalized || /^ai tutor answer$/i.test(normalized);
+}
+
 export async function sendAnswerEmail(req, res) {
   try {
     const {
@@ -96,13 +141,20 @@ export async function sendAnswerEmail(req, res) {
       attachPdf = false,
       attachmentFormat = "pdf",
       attachments = [],
+      messages = [],
     } = req.body;
 
-    if (!to || !answer) {
+    const derivedContext = extractConversationContext(messages);
+    const finalAnswer = isMissingAnswer(answer) ? derivedContext.answer || "" : String(answer || "");
+    const finalQuestion = isGenericQuestion(question)
+      ? derivedContext.question || "AI Tutor Answer"
+      : String(question || "");
+
+    if (!to || !finalAnswer) {
       return res.status(400).json({ error: "to and answer are required." });
     }
 
-    const safeQuestion = question || "AI Tutor Answer";
+    const safeQuestion = finalQuestion || "AI Tutor Answer";
     const generatedAttachment =
       attachmentFormat === "doc"
         ? {
@@ -110,7 +162,7 @@ export async function sendAnswerEmail(req, res) {
             content: buildWordDocument({
               title: subject ?? "AI Tutor Answer",
               question: safeQuestion,
-              answer,
+              answer: finalAnswer,
             }).toString("base64"),
             type: "application/msword",
           }
@@ -119,7 +171,7 @@ export async function sendAnswerEmail(req, res) {
             content: buildAnswerPdf({
               title: subject ?? "AI Tutor Answer",
               question: safeQuestion,
-              answer,
+              answer: finalAnswer,
             }).toString("base64"),
             type: "application/pdf",
           };
@@ -135,10 +187,10 @@ export async function sendAnswerEmail(req, res) {
       html: `
         <h2>AI Tutor Answer</h2>
         <p>Your requested attachment is included with this email.</p>
-        ${question ? `<p><strong>Question:</strong> ${question}</p>` : ""}
+        ${finalQuestion ? `<p><strong>Question:</strong> ${finalQuestion}</p>` : ""}
       `,
-      text: question
-        ? `Your requested attachment is included.\n\nQuestion: ${question}`
+      text: finalQuestion
+        ? `Your requested attachment is included.\n\nQuestion: ${finalQuestion}`
         : "Your requested attachment is included.",
       attachments: emailAttachments,
     });

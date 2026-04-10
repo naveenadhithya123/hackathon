@@ -94,7 +94,14 @@ export async function listChatsByUser(userId) {
     throw new Error(error.message);
   }
 
-  return data;
+  return (data || []).map((chat) => ({
+    ...chat,
+    messages: [...(chat.messages || [])].sort((left, right) => {
+      const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0;
+      const rightTime = right?.created_at ? new Date(right.created_at).getTime() : 0;
+      return leftTime - rightTime;
+    }),
+  }));
 }
 
 export async function saveDocument(document) {

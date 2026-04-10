@@ -2,6 +2,26 @@ import { useState } from "react";
 import { getHistory, sendChatMessage } from "../services/api.js";
 import { createWelcomeMessage } from "../store/chatStore.js";
 
+function findLatestAssistantAnswer(messages = []) {
+  return [...(messages || [])]
+    .reverse()
+    .find((message) => message?.role === "assistant" && String(message.content || "").trim())
+    ?.content || "";
+}
+
+function sortChatMessages(messages = []) {
+  return [...(messages || [])].sort((left, right) => {
+    const leftTime = left?.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightTime = right?.created_at ? new Date(right.created_at).getTime() : 0;
+
+    if (leftTime && rightTime && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return 0;
+  });
+}
+
 export function useChat({ userId }) {
   const [chats, setChats] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
@@ -21,12 +41,12 @@ export function useChat({ userId }) {
   function startNewChat() {
     setCurrentChatId(null);
     setMessages([createWelcomeMessage()]);
+    setLastAssistantAnswer("");
   }
 
   function openChat(chat) {
     setCurrentChatId(chat.id);
-    setMessages(
-      (chat.messages || []).map((message) => ({
+    const mappedMessages = sortChatMessages(chat.messages || []).map((message) => ({
         id: message.id,
         role: message.role,
         content: message.content,
@@ -38,8 +58,10 @@ export function useChat({ userId }) {
         messageType: message.metadata?.messageType || "chat",
         status: "done",
         animate: false,
-      })),
-    );
+      }));
+
+    setMessages(mappedMessages);
+    setLastAssistantAnswer(findLatestAssistantAnswer(mappedMessages));
   }
 
   async function sendMessage({
