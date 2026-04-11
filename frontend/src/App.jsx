@@ -470,6 +470,7 @@ export default function App() {
   const typingUserTimeoutsRef = useRef(new Map());
   const refreshCurrentChatRef = useRef(null);
   const sharedEventIdsRef = useRef(new Set());
+  const previousUserIdRef = useRef(null);
   const clientSessionIdRef = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -488,6 +489,7 @@ export default function App() {
     lastAssistantAnswer,
     loadHistory,
     startNewChat,
+    resetChatState,
     openChat,
     openSharedChatByToken,
     refreshCurrentChat,
@@ -533,6 +535,56 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const previousUserId = previousUserIdRef.current;
+
+    if (previousUserId && previousUserId !== userId) {
+      resetChatState();
+      setPendingAttachments([]);
+      setComposerValue("");
+      setLastQuestion("");
+      setPendingEmailRequest(null);
+      setLastEmailTarget("");
+      setActiveDocumentIds([]);
+      setSidebarView("chats");
+      setGalleryTab("generated");
+      setActiveMode("study");
+      setActiveShareToken("");
+      setLiveTypingUsers([]);
+      setChatSearch("");
+      sharedEventIdsRef.current.clear();
+      for (const timeoutId of typingUserTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      typingUserTimeoutsRef.current.clear();
+      writeShareTokenToUrl("");
+    }
+
+    if (!userId && previousUserId) {
+      resetChatState();
+      setPendingAttachments([]);
+      setComposerValue("");
+      setLastQuestion("");
+      setPendingEmailRequest(null);
+      setLastEmailTarget("");
+      setActiveDocumentIds([]);
+      setSidebarView("chats");
+      setGalleryTab("generated");
+      setActiveMode("study");
+      setActiveShareToken("");
+      setLiveTypingUsers([]);
+      setChatSearch("");
+      sharedEventIdsRef.current.clear();
+      for (const timeoutId of typingUserTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      typingUserTimeoutsRef.current.clear();
+      writeShareTokenToUrl("");
+    }
+
+    previousUserIdRef.current = userId;
+  }, [userId, resetChatState]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -999,6 +1051,25 @@ export default function App() {
       return;
     }
 
+    resetChatState();
+    setPendingAttachments([]);
+    setComposerValue("");
+    setLastQuestion("");
+    setPendingEmailRequest(null);
+    setLastEmailTarget("");
+    setActiveDocumentIds([]);
+    setSidebarView("chats");
+    setGalleryTab("generated");
+    setActiveMode("study");
+    setActiveShareToken("");
+    setLiveTypingUsers([]);
+    setChatSearch("");
+    sharedEventIdsRef.current.clear();
+    for (const timeoutId of typingUserTimeoutsRef.current.values()) {
+      window.clearTimeout(timeoutId);
+    }
+    typingUserTimeoutsRef.current.clear();
+    writeShareTokenToUrl("");
     await supabase.auth.signOut();
     setIsUserMenuOpen(false);
   }

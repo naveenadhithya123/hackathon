@@ -65,6 +65,15 @@ export function useChat({ userId }) {
     setLastAssistantAnswer("");
   }
 
+  function resetChatState() {
+    setChats([]);
+    setCurrentChat(null);
+    setCurrentChatId(null);
+    setMessages([createWelcomeMessage()]);
+    setIsLoading(false);
+    setLastAssistantAnswer("");
+  }
+
   function openChat(chat) {
     setCurrentChatId(chat.id);
     setCurrentChat(chat);
@@ -253,6 +262,7 @@ export function useChat({ userId }) {
     lastAssistantAnswer,
     loadHistory,
     startNewChat,
+    resetChatState,
     openChat,
     openSharedChatByToken,
     refreshCurrentChat,
