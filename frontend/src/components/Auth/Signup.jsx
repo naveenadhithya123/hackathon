@@ -13,10 +13,16 @@ export default function Signup({ onSwitch }) {
     if (!supabase) { setStatus("Supabase auth is not configured yet."); return; }
     setLoading(true);
     setStatus("");
+    const emailRedirectTo =
+      import.meta.env.VITE_AUTH_REDIRECT_URL ||
+      (typeof window !== "undefined" ? window.location.origin : undefined);
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      options: {
+        data: { full_name: fullName },
+        emailRedirectTo,
+      },
     });
     setLoading(false);
     if (error) setStatus(error.message);
