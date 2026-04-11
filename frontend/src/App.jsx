@@ -471,6 +471,8 @@ export default function App() {
   const refreshCurrentChatRef = useRef(null);
   const sharedEventIdsRef = useRef(new Set());
   const previousUserIdRef = useRef(null);
+  const entryShareTokenRef = useRef(getShareTokenFromUrl());
+  const hasProcessedEntryShareRef = useRef(false);
   const clientSessionIdRef = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -558,6 +560,8 @@ export default function App() {
         window.clearTimeout(timeoutId);
       }
       typingUserTimeoutsRef.current.clear();
+      entryShareTokenRef.current = "";
+      hasProcessedEntryShareRef.current = true;
       writeShareTokenToUrl("");
     }
 
@@ -580,6 +584,8 @@ export default function App() {
         window.clearTimeout(timeoutId);
       }
       typingUserTimeoutsRef.current.clear();
+      entryShareTokenRef.current = "";
+      hasProcessedEntryShareRef.current = true;
       writeShareTokenToUrl("");
     }
 
@@ -627,7 +633,9 @@ export default function App() {
     async function loadInitialData() {
       await loadHistory();
 
-      const shareToken = getShareTokenFromUrl();
+      const shareToken = hasProcessedEntryShareRef.current ? "" : entryShareTokenRef.current;
+      hasProcessedEntryShareRef.current = true;
+
       if (!shareToken || isCancelled) {
         return;
       }
@@ -643,6 +651,8 @@ export default function App() {
       } catch (_error) {
         if (!isCancelled) {
           setActiveShareToken("");
+          entryShareTokenRef.current = "";
+          writeShareTokenToUrl("");
         }
       }
     }
@@ -927,6 +937,8 @@ export default function App() {
     setActiveShareToken("");
     setLiveTypingUsers([]);
     sharedEventIdsRef.current.clear();
+    entryShareTokenRef.current = "";
+    hasProcessedEntryShareRef.current = true;
     for (const timeoutId of typingUserTimeoutsRef.current.values()) {
       window.clearTimeout(timeoutId);
     }
@@ -1065,6 +1077,8 @@ export default function App() {
     setLiveTypingUsers([]);
     setChatSearch("");
     sharedEventIdsRef.current.clear();
+    entryShareTokenRef.current = "";
+    hasProcessedEntryShareRef.current = true;
     for (const timeoutId of typingUserTimeoutsRef.current.values()) {
       window.clearTimeout(timeoutId);
     }
@@ -1522,6 +1536,8 @@ export default function App() {
       const shareUrl = url.toString();
 
       setActiveShareToken(shareToken);
+      entryShareTokenRef.current = shareToken;
+      hasProcessedEntryShareRef.current = true;
       writeShareTokenToUrl(shareToken);
 
       const payload = {
