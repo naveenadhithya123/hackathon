@@ -1878,7 +1878,7 @@ export default function App() {
   };
 
   return (
-    <div className="chatgpt-shell">
+    <div className={`chatgpt-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
       <div
         className={`sidebar-backdrop ${mobileSidebarOpen ? "visible" : ""}`}
         onClick={() => setMobileSidebarOpen(false)}
@@ -1910,13 +1910,6 @@ export default function App() {
               New chat
             </button>
           ) : null}
-          <button
-            className="icon-button sidebar-toggle-button"
-            onClick={handleSidebarToggle}
-            aria-label="Toggle sidebar"
-          >
-            <span className="sidebar-toggle-icon" />
-          </button>
         </div>
 
         {showSidebarContent ? (
@@ -1983,18 +1976,11 @@ export default function App() {
           <div className="topbar-brand">
             <button
               className="icon-button mobile-nav-button"
-              onClick={() => setMobileSidebarOpen(true)}
-              aria-label="Open sidebar"
-            >
-              <span className="mobile-nav-dots" />
-            </button>
-            <button
-              className="icon-button sidebar-toggle-button topbar-toggle-button"
               onClick={handleSidebarToggle}
               aria-label="Toggle sidebar"
               title="Toggle sidebar"
             >
-              <span className="sidebar-toggle-icon" />
+              <span className="mobile-nav-dots" />
             </button>
             <h1>Smart GPT🐦‍🔥</h1>
             <p>{AI_SPACES.find((space) => space.id === activeMode)?.subtitle || "Advanced AI workspace"}</p>

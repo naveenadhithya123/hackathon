@@ -231,6 +231,10 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   position: relative;
 }
 
+.chatgpt-shell.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
 /* ── Left rail ──────────────────────────────────────────────────────────────── */
 .left-rail {
   background: rgba(9,14,23,0.97);
@@ -246,7 +250,12 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   z-index: 30;
 }
 
-.left-rail.collapsed { width: 72px; padding: 14px 10px; }
+.left-rail.collapsed {
+  width: 0;
+  padding: 0;
+  border-right: 0;
+  overflow: hidden;
+}
 
 .sidebar-top {
   display: flex;
@@ -345,7 +354,7 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
 .sidebar-toggle-icon::after { top: 5px; }
 
 .mobile-nav-button {
-  display: none !important;
+  display: inline-flex !important;
   margin-right: 10px;
 }
 
@@ -1612,9 +1621,6 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   .left-rail.collapsed {
     width: min(310px, 86vw);
     padding: 14px 14px 12px;
-  }
-  .mobile-nav-button {
-    display: inline-flex !important;
   }
   .topbar-toggle-button {
     display: none;
