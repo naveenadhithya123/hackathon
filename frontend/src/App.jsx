@@ -1885,6 +1885,19 @@ export default function App() {
               </div>
             </div>
             {sidebarOpen ? (
+              <div className="sidebar-user">
+                <span className="user-badge-avatar">{userInitial}</span>
+                <div className="sidebar-user-meta">
+                  <span className="sidebar-user-name">
+                    {userDisplayName || "Guest mode"}
+                  </span>
+                  <span className="sidebar-user-subtitle">
+                    {userEmail || "Signed out"}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+            {sidebarOpen ? (
             <button className="new-chat-button" onClick={handleNewChat}>
               New chat
             </button>

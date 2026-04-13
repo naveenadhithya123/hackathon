@@ -914,6 +914,44 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   text-overflow: ellipsis;
 }
 
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-left: 8px;
+  border-radius: 16px;
+  background: rgba(98,200,255,0.08);
+  border: 1px solid rgba(98,200,255,0.16);
+  color: var(--text);
+}
+
+.sidebar-user-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-user-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.sidebar-user-subtitle {
+  font-size: 0.72rem;
+  color: rgba(148,163,184,0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
 .user-menu-trigger {
   appearance: none;
 }
