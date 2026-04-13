@@ -26,7 +26,7 @@ export default function Signup({ onSwitch }) {
     });
     setLoading(false);
     if (error) setStatus(error.message);
-    else setStatus("Account created! Check your email to verify if required.");
+    else setStatus("Account created. Confirm your email to continue.");
   }
 
   return (
@@ -58,7 +58,7 @@ export default function Signup({ onSwitch }) {
       <button className="send-button" type="submit" disabled={loading} style={{ width: "100%", marginBottom: "12px" }}>
         {loading ? "Creating account..." : "Create Account"}
       </button>
-      {status && <p className="status-row" style={{ color: status.includes("created") ? "var(--success)" : "var(--danger)" }}>{status}</p>}
+      {status && <p className="status-row" style={{ color: status.includes("Account created") ? "var(--success)" : "var(--danger)" }}>{status}</p>}
       <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: "12px 0 0", textAlign: "center" }}>
         Already have an account?{" "}
         <button className="pill-button" type="button" onClick={onSwitch} style={{ padding: "4px 10px", fontSize: "0.88rem" }}>
