@@ -515,6 +515,13 @@ export default function App() {
 
   const userId = session?.user?.id ?? null;
   const userEmail = session?.user?.email ?? null;
+  const userProfileName =
+    session?.user?.user_metadata?.full_name ||
+    session?.user?.user_metadata?.name ||
+    "";
+  const userDisplayName =
+    userProfileName ||
+    (userEmail ? userEmail.split("@")[0] : "");
 
   const {
     chats,
@@ -581,12 +588,12 @@ export default function App() {
         )
       ) {
         const provider = data.session.user?.app_metadata?.provider || "";
-        setAuthNotice({
-          tone: "success",
-          text: provider === "google"
-            ? "Google sign-in successful. You can continue using your account now."
-            : "Verification successful. You can continue using your account now.",
-        });
+        if (provider !== "google") {
+          setAuthNotice({
+            tone: "success",
+            text: "Verification successful. You can continue using your account now.",
+          });
+        }
         clearAuthCallbackUrl();
         authCallbackRef.current = {
           type: "",
@@ -621,12 +628,12 @@ export default function App() {
         )
       ) {
         const provider = nextSession?.user?.app_metadata?.provider || "";
-        setAuthNotice({
-          tone: "success",
-          text: provider === "google"
-            ? "Google sign-in successful. You can continue using your account now."
-            : "Verification successful. You can continue using your account now.",
-        });
+        if (provider !== "google") {
+          setAuthNotice({
+            tone: "success",
+            text: "Verification successful. You can continue using your account now.",
+          });
+        }
         clearAuthCallbackUrl();
         authCallbackRef.current = {
           type: "",
@@ -1996,7 +2003,7 @@ export default function App() {
                   }
                 }}
               >
-                {userEmail || "Guest mode"}
+                {userDisplayName || "Guest mode"}
               </button>
               <button
                 className="mobile-share-button"
