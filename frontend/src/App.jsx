@@ -1988,6 +1988,21 @@ export default function App() {
             <button className="pill-button" onClick={handleShareCurrentChat}>
               Share chat
             </button>
+            <button
+              className="mobile-share-button"
+              type="button"
+              onClick={handleShareCurrentChat}
+              aria-label="Share chat"
+              title="Share chat"
+            >
+              <svg viewBox="0 0 24 24" className="toolbar-icon" aria-hidden="true">
+                <circle cx="18" cy="5" r="2.5" />
+                <circle cx="6" cy="12" r="2.5" />
+                <circle cx="18" cy="19" r="2.5" />
+                <path d="m8.2 11 7.6-4.3" />
+                <path d="m8.2 13 7.6 4.3" />
+              </svg>
+            </button>
             <div className="user-menu" ref={userMenuRef}>
               <button
                 className="user-badge user-menu-trigger"
@@ -2002,21 +2017,6 @@ export default function App() {
                 <span className="user-badge-label">
                   {userDisplayName || "Guest mode"}
                 </span>
-              </button>
-              <button
-                className="mobile-share-button"
-                type="button"
-                onClick={handleShareCurrentChat}
-                aria-label="Share chat"
-                title="Share chat"
-              >
-                <svg viewBox="0 0 24 24" className="toolbar-icon" aria-hidden="true">
-                  <circle cx="18" cy="5" r="2.5" />
-                  <circle cx="6" cy="12" r="2.5" />
-                  <circle cx="18" cy="19" r="2.5" />
-                  <path d="m8.2 11 7.6-4.3" />
-                  <path d="m8.2 13 7.6 4.3" />
-                </svg>
               </button>
               {isUserMenuOpen ? (
                 <div className="user-menu-panel">
