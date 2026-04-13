@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { supabase } from "../../services/supabase.js";
+import GoogleAuthButton from "./GoogleAuthButton.jsx";
+import { startGoogleAuth } from "./authActions.js";
 
 export default function Login({ onSwitch }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -17,8 +20,28 @@ export default function Login({ onSwitch }) {
     if (error) setStatus(error.message);
   }
 
+  async function handleGoogleSignIn() {
+    setStatus("");
+    setGoogleLoading(true);
+
+    try {
+      await startGoogleAuth();
+    } catch (error) {
+      setStatus(error.message || "Google sign-in could not start right now.");
+      setGoogleLoading(false);
+    }
+  }
+
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="auth-form" onSubmit={handleSubmit}>
+      <GoogleAuthButton
+        onClick={handleGoogleSignIn}
+        disabled={loading || googleLoading}
+        label={googleLoading ? "Redirecting to Google..." : "Continue with Google"}
+      />
+      <div className="auth-divider" aria-hidden="true">
+        <span>or continue with email</span>
+      </div>
       <input
         type="email"
         placeholder="Email address"
@@ -35,11 +58,11 @@ export default function Login({ onSwitch }) {
         required
         autoComplete="current-password"
       />
-      <button className="send-button" type="submit" disabled={loading} style={{ width: "100%", marginBottom: "12px" }}>
+      <button className="send-button auth-primary-action" type="submit" disabled={loading || googleLoading}>
         {loading ? "Signing in..." : "Sign In"}
       </button>
       {status && <p className="status-row" style={{ color: status.includes("success") ? "var(--success)" : "var(--danger)" }}>{status}</p>}
-      <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: "12px 0 0", textAlign: "center" }}>
+      <p className="auth-switch-copy">
         Don't have an account?{" "}
         <button className="pill-button" type="button" onClick={onSwitch} style={{ padding: "4px 10px", fontSize: "0.88rem" }}>
           Create account

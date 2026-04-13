@@ -105,6 +105,73 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   font-size: 0.95rem;
 }
 
+.auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.auth-primary-action {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 14px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.google-auth-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 6px;
+  padding: 13px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(10, 15, 28, 0.92);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.google-auth-button:hover {
+  background: rgba(17, 24, 39, 0.98);
+  border-color: rgba(98, 200, 255, 0.26);
+}
+
+.google-auth-button:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.google-auth-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.google-auth-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .auth-feedback-banner {
   margin: 0 0 18px;
   padding: 12px 14px;
@@ -128,6 +195,13 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
 
 .app-auth-banner {
   margin: 14px 20px 0;
+}
+
+.auth-switch-copy {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 12px 0 0;
+  text-align: center;
 }
 
 .auth-card input {

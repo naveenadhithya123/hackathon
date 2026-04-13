@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../../services/supabase.js";
+import GoogleAuthButton from "./GoogleAuthButton.jsx";
+import { getAuthRedirectTo, startGoogleAuth } from "./authActions.js";
 
 export default function Signup({ onSwitch }) {
   const [fullName, setFullName] = useState("");
@@ -7,15 +9,14 @@ export default function Signup({ onSwitch }) {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
     if (!supabase) { setStatus("Supabase auth is not configured yet."); return; }
     setLoading(true);
     setStatus("");
-    const emailRedirectTo =
-      import.meta.env.VITE_AUTH_REDIRECT_URL ||
-      (typeof window !== "undefined" ? window.location.origin : undefined);
+    const emailRedirectTo = getAuthRedirectTo();
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -29,8 +30,28 @@ export default function Signup({ onSwitch }) {
     else setStatus("Account created. Confirm your email to continue.");
   }
 
+  async function handleGoogleSignIn() {
+    setStatus("");
+    setGoogleLoading(true);
+
+    try {
+      await startGoogleAuth();
+    } catch (error) {
+      setStatus(error.message || "Google sign-in could not start right now.");
+      setGoogleLoading(false);
+    }
+  }
+
   return (
-    <form onSubmit={handleSubmit}>
+    <form className="auth-form" onSubmit={handleSubmit}>
+      <GoogleAuthButton
+        onClick={handleGoogleSignIn}
+        disabled={loading || googleLoading}
+        label={googleLoading ? "Redirecting to Google..." : "Continue with Google"}
+      />
+      <div className="auth-divider" aria-hidden="true">
+        <span>or sign up with email</span>
+      </div>
       <input
         type="text"
         placeholder="Full name"
@@ -55,11 +76,11 @@ export default function Signup({ onSwitch }) {
         minLength={6}
         autoComplete="new-password"
       />
-      <button className="send-button" type="submit" disabled={loading} style={{ width: "100%", marginBottom: "12px" }}>
+      <button className="send-button auth-primary-action" type="submit" disabled={loading || googleLoading}>
         {loading ? "Creating account..." : "Create Account"}
       </button>
       {status && <p className="status-row" style={{ color: status.includes("Account created") ? "var(--success)" : "var(--danger)" }}>{status}</p>}
-      <p style={{ color: "var(--muted)", fontSize: "0.9rem", margin: "12px 0 0", textAlign: "center" }}>
+      <p className="auth-switch-copy">
         Already have an account?{" "}
         <button className="pill-button" type="button" onClick={onSwitch} style={{ padding: "4px 10px", fontSize: "0.88rem" }}>
           Sign in

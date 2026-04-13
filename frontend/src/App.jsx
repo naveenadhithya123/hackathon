@@ -580,9 +580,12 @@ export default function App() {
           authCallbackRef.current.type === "signup"
         )
       ) {
+        const provider = data.session.user?.app_metadata?.provider || "";
         setAuthNotice({
           tone: "success",
-          text: "Verification successful. You can continue using your account now.",
+          text: provider === "google"
+            ? "Google sign-in successful. You can continue using your account now."
+            : "Verification successful. You can continue using your account now.",
         });
         clearAuthCallbackUrl();
         authCallbackRef.current = {
@@ -617,9 +620,12 @@ export default function App() {
           authCallbackRef.current.type === "signup"
         )
       ) {
+        const provider = nextSession?.user?.app_metadata?.provider || "";
         setAuthNotice({
           tone: "success",
-          text: "Verification successful. You can continue using your account now.",
+          text: provider === "google"
+            ? "Google sign-in successful. You can continue using your account now."
+            : "Verification successful. You can continue using your account now.",
         });
         clearAuthCallbackUrl();
         authCallbackRef.current = {
