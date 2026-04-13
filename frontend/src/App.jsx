@@ -2025,6 +2025,10 @@ export default function App() {
               </button>
               {isUserMenuOpen ? (
                 <div className="user-menu-panel">
+                  <div className="user-menu-meta">
+                    <span className="user-menu-name">{userDisplayName || "Guest mode"}</span>
+                    <span className="user-menu-email">{userEmail || "Not signed in"}</span>
+                  </div>
                   <button className="user-menu-item" type="button" onClick={handleLogout}>
                     Logout
                   </button>
