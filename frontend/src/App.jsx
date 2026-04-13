@@ -522,6 +522,7 @@ export default function App() {
   const userDisplayName =
     userProfileName ||
     (userEmail ? userEmail.split("@")[0] : "");
+  const userInitial = (userDisplayName || "G").trim().slice(0, 1).toUpperCase();
 
   const {
     chats,
@@ -587,13 +588,6 @@ export default function App() {
           authCallbackRef.current.type === "signup"
         )
       ) {
-        const provider = data.session.user?.app_metadata?.provider || "";
-        if (provider !== "google") {
-          setAuthNotice({
-            tone: "success",
-            text: "Verification successful. You can continue using your account now.",
-          });
-        }
         clearAuthCallbackUrl();
         authCallbackRef.current = {
           type: "",
@@ -627,13 +621,6 @@ export default function App() {
           authCallbackRef.current.type === "signup"
         )
       ) {
-        const provider = nextSession?.user?.app_metadata?.provider || "";
-        if (provider !== "google") {
-          setAuthNotice({
-            tone: "success",
-            text: "Verification successful. You can continue using your account now.",
-          });
-        }
         clearAuthCallbackUrl();
         authCallbackRef.current = {
           type: "",
@@ -2003,7 +1990,10 @@ export default function App() {
                   }
                 }}
               >
-                {userDisplayName || "Guest mode"}
+                <span className="user-badge-avatar">{userInitial}</span>
+                <span className="user-badge-label">
+                  {userDisplayName || "Guest mode"}
+                </span>
               </button>
               <button
                 className="mobile-share-button"
