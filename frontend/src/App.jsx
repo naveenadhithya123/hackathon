@@ -442,6 +442,38 @@ function writeShareTokenToUrl(token = "") {
   window.history.replaceState({}, "", url.toString());
 }
 
+function readAuthCallbackPayload() {
+  const url = new URL(window.location.href);
+  const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : "");
+  const searchParams = url.searchParams;
+  const errorDescription =
+    searchParams.get("error_description") ||
+    hashParams.get("error_description") ||
+    searchParams.get("error") ||
+    hashParams.get("error") ||
+    "";
+
+  return {
+    type: searchParams.get("type") || hashParams.get("type") || "",
+    code: searchParams.get("code") || "",
+    tokenHash: searchParams.get("token_hash") || "",
+    hasSessionTokens: Boolean(hashParams.get("access_token") || hashParams.get("refresh_token")),
+    errorDescription: errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, " ")) : "",
+  };
+}
+
+function clearAuthCallbackUrl() {
+  const url = new URL(window.location.href);
+  const paramsToDelete = ["code", "type", "token_hash", "error", "error_code", "error_description"];
+
+  for (const key of paramsToDelete) {
+    url.searchParams.delete(key);
+  }
+
+  url.hash = "";
+  window.history.replaceState({}, "", url.toString());
+}
+
 export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [session, setSession] = useState(null);
@@ -462,6 +494,7 @@ export default function App() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [activeShareToken, setActiveShareToken] = useState("");
   const [liveTypingUsers, setLiveTypingUsers] = useState([]);
+  const [authNotice, setAuthNotice] = useState(null);
   const fileInputRef = useRef(null);
   const userMenuRef = useRef(null);
   const sharedChannelRef = useRef(null);
@@ -473,6 +506,7 @@ export default function App() {
   const previousUserIdRef = useRef(null);
   const entryShareTokenRef = useRef(getShareTokenFromUrl());
   const hasProcessedEntryShareRef = useRef(false);
+  const authCallbackRef = useRef(readAuthCallbackPayload());
   const clientSessionIdRef = useRef(
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -517,13 +551,53 @@ export default function App() {
       return undefined;
     }
 
+    const initialCallback = authCallbackRef.current;
+
+    if (initialCallback.errorDescription) {
+      setAuthNotice({
+        tone: "error",
+        text: initialCallback.errorDescription,
+      });
+      clearAuthCallbackUrl();
+      authCallbackRef.current = {
+        type: "",
+        code: "",
+        tokenHash: "",
+        hasSessionTokens: false,
+        errorDescription: "",
+      };
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+
+      if (
+        data.session &&
+        (
+          authCallbackRef.current.code ||
+          authCallbackRef.current.tokenHash ||
+          authCallbackRef.current.hasSessionTokens ||
+          authCallbackRef.current.type === "signup"
+        )
+      ) {
+        setAuthNotice({
+          tone: "success",
+          text: "Verification successful. You can continue using your account now.",
+        });
+        clearAuthCallbackUrl();
+        authCallbackRef.current = {
+          type: "",
+          code: "",
+          tokenHash: "",
+          hasSessionTokens: false,
+          errorDescription: "",
+        };
+      }
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       setSession(nextSession);
 
       if (nextSession?.user) {
@@ -533,10 +607,45 @@ export default function App() {
           fullName: nextSession.user.user_metadata?.full_name || "",
         });
       }
+
+      if (
+        event === "SIGNED_IN" &&
+        (
+          authCallbackRef.current.code ||
+          authCallbackRef.current.tokenHash ||
+          authCallbackRef.current.hasSessionTokens ||
+          authCallbackRef.current.type === "signup"
+        )
+      ) {
+        setAuthNotice({
+          tone: "success",
+          text: "Verification successful. You can continue using your account now.",
+        });
+        clearAuthCallbackUrl();
+        authCallbackRef.current = {
+          type: "",
+          code: "",
+          tokenHash: "",
+          hasSessionTokens: false,
+          errorDescription: "",
+        };
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!authNotice) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setAuthNotice(null);
+    }, 7000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [authNotice]);
 
   useEffect(() => {
     const previousUserId = previousUserIdRef.current;
@@ -1725,6 +1834,11 @@ export default function App() {
         <div className="auth-card">
           <h1>AI Hackathon</h1>
           <p>Sign in to save chats, attachments, and folders in Supabase.</p>
+          {authNotice ? (
+            <div className={`auth-feedback-banner ${authNotice.tone}`}>
+              {authNotice.text}
+            </div>
+          ) : null}
           {authMode === "login" ? (
             <Login onSwitch={() => setAuthMode("signup")} />
           ) : (
@@ -1903,6 +2017,11 @@ export default function App() {
             </div>
           </div>
         </header>
+        {authNotice ? (
+          <div className={`auth-feedback-banner app-auth-banner ${authNotice.tone}`}>
+            {authNotice.text}
+          </div>
+        ) : null}
 
         {sidebarView === "gallery" ? (
           <section className="conversation-scroll">
