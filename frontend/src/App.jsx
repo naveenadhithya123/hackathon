@@ -554,6 +554,14 @@ export default function App() {
     speak,
   } = useSpeech();
 
+  const handleSidebarToggle = () => {
+    if (window.innerWidth <= 900) {
+      setMobileSidebarOpen((value) => !value);
+    } else {
+      setSidebarOpen((value) => !value);
+    }
+  };
+
   useEffect(() => {
     if (!supabase || !authEnabled) {
       return undefined;
@@ -1904,13 +1912,7 @@ export default function App() {
           ) : null}
           <button
             className="icon-button sidebar-toggle-button"
-            onClick={() => {
-              if (window.innerWidth <= 900) {
-                setMobileSidebarOpen((value) => !value);
-              } else {
-                setSidebarOpen((value) => !value);
-              }
-            }}
+            onClick={handleSidebarToggle}
             aria-label="Toggle sidebar"
           >
             <span className="sidebar-toggle-icon" />
@@ -1985,6 +1987,14 @@ export default function App() {
               aria-label="Open sidebar"
             >
               <span className="mobile-nav-dots" />
+            </button>
+            <button
+              className="icon-button sidebar-toggle-button topbar-toggle-button"
+              onClick={handleSidebarToggle}
+              aria-label="Toggle sidebar"
+              title="Toggle sidebar"
+            >
+              <span className="sidebar-toggle-icon" />
             </button>
             <h1>Smart GPT🐦‍🔥</h1>
             <p>{AI_SPACES.find((space) => space.id === activeMode)?.subtitle || "Advanced AI workspace"}</p>

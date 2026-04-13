@@ -311,6 +311,10 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   border-color: rgba(148, 163, 184, 0.16);
 }
 
+.topbar-toggle-button {
+  margin-left: 0;
+}
+
 .sidebar-toggle-icon,
 .mobile-nav-dots {
   position: relative;
@@ -1611,6 +1615,9 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
   }
   .mobile-nav-button {
     display: inline-flex !important;
+  }
+  .topbar-toggle-button {
+    display: none;
   }
   .topbar {
     align-items: flex-start;
