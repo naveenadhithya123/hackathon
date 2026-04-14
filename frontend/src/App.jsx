@@ -1984,7 +1984,7 @@ export default function App() {
             </button>
             <h1>Smart GPT🐦‍🔥</h1>
           </div>
-          <div className="topbar-actions">
+          <div className="topbar-actions topbar-actions-desktop">
             <button className="pill-button" onClick={handleShareCurrentChat}>
               Share chat
             </button>

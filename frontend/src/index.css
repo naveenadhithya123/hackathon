@@ -872,6 +872,16 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
 
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
+.topbar-actions-desktop {
+  display: none;
+}
+
+@media (min-width: 901px) {
+  .topbar-actions-desktop {
+    display: flex;
+  }
+}
+
 
 .user-menu {
   position: relative;
