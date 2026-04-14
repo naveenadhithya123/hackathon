@@ -1985,9 +1985,6 @@ export default function App() {
             <h1>Smart GPT🐦‍🔥</h1>
           </div>
           <div className="topbar-actions">
-            <span className="build-tag" aria-label="Build tag">
-              build: c58ea98
-            </span>
             <button className="pill-button" onClick={handleShareCurrentChat}>
               Share chat
             </button>
@@ -2006,7 +2003,7 @@ export default function App() {
                 <path d="m8.2 13 7.6 4.3" />
               </svg>
             </button>
-            <div className="user-menu" ref={userMenuRef}>
+            <div className="user-menu user-menu-desktop" ref={userMenuRef}>
               <button
                 className="user-badge user-menu-trigger"
                 type="button"
