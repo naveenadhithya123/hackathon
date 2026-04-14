@@ -1974,14 +1974,6 @@ export default function App() {
       <main className="main-stage">
         <header className="topbar">
           <div className="topbar-brand">
-            <button
-              className="icon-button mobile-nav-button"
-              onClick={handleSidebarToggle}
-              aria-label="Toggle sidebar"
-              title="Toggle sidebar"
-            >
-              <span className="mobile-nav-dots" />
-            </button>
             <h1>Smart GPT🐦‍🔥</h1>
           </div>
           <div className="topbar-actions">
