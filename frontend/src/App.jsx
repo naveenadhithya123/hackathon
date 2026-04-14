@@ -1907,7 +1907,8 @@ export default function App() {
             ) : null}
             {sidebarOpen ? (
             <button className="new-chat-button" onClick={handleNewChat}>
-              New chat
+              <span className="new-chat-icon">+</span>
+              <span>New chat</span>
             </button>
           ) : null}
         </div>
