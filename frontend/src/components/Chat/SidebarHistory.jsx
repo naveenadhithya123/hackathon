@@ -22,12 +22,6 @@ export default function SidebarHistory({
             {chat.isSharedAccess ? (
               <span className="history-item-shared">Shared with you</span>
             ) : null}
-            <span>{new Date(chat.updated_at || Date.now()).toLocaleString([], {
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}</span>
           </button>
         ))
       )}
