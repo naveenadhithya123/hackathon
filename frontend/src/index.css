@@ -872,6 +872,15 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
 
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
+.build-tag {
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.6);
+  color: rgba(148, 163, 184, 0.9);
+}
+
 .user-menu {
   position: relative;
 }

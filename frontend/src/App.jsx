@@ -1985,6 +1985,9 @@ export default function App() {
             <h1>Smart GPT🐦‍🔥</h1>
           </div>
           <div className="topbar-actions">
+            <span className="build-tag" aria-label="Build tag">
+              build: c58ea98
+            </span>
             <button className="pill-button" onClick={handleShareCurrentChat}>
               Share chat
             </button>
