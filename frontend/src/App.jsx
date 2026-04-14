@@ -1878,7 +1878,7 @@ export default function App() {
   };
 
   return (
-    <div className={`chatgpt-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+    <div className={`chatgpt-shell ${sidebarOpen ? "" : "sidebar-collapsed"} ${mobileSidebarOpen ? "mobile-sidebar-open" : ""}`}>
       <div
         className={`sidebar-backdrop ${mobileSidebarOpen ? "visible" : ""}`}
         onClick={() => setMobileSidebarOpen(false)}
