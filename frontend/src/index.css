@@ -1651,6 +1651,10 @@ button, input, textarea, select { font: inherit; cursor: pointer; }
     opacity: 0;
     pointer-events: none;
   }
+  .chatgpt-shell.mobile-sidebar-open .topbar-brand {
+    opacity: 0;
+    pointer-events: none;
+  }
   .pill-button {
     display: none;
   }
